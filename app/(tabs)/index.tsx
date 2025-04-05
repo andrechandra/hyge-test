@@ -117,7 +117,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#262626'
   },
   userInfo: {
     flexDirection: 'row',
@@ -191,8 +193,8 @@ const styles = StyleSheet.create({
     marginBottom: 12
   },
   podcastImageContainer: {
-    width: 56,
-    height: 56,
+    width: 64,
+    height: 64,
     borderRadius: 8,
     marginRight: 12,
     overflow: 'hidden',
@@ -200,8 +202,8 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   podcastImage: {
-    width: 56,
-    height: 56,
+    width: 64,
+    height: 64,
     borderRadius: 8
   },
   podcastInfo: {
