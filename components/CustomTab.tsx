@@ -7,6 +7,7 @@ import {
   Animated
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { usePodcast } from '@/context/PodcastContext'
 
 interface CustomTabProps {
   label: string
@@ -21,6 +22,7 @@ export default function CustomTab({
   isActive,
   onPress
 }: CustomTabProps) {
+  const { showMiniPlayer } = usePodcast()
   const scaleAnim = useRef(new Animated.Value(1)).current
 
   const handlePress = () => {
@@ -40,10 +42,14 @@ export default function CustomTab({
     onPress()
   }
 
+  const tabButtonStyle = showMiniPlayer
+    ? [styles.tabButton, styles.tabButtonWithPlayer]
+    : styles.tabButton
+
   return (
     <TouchableOpacity
       onPress={handlePress}
-      style={styles.tabButton}
+      style={tabButtonStyle}
       activeOpacity={0.7}
     >
       <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
@@ -72,6 +78,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 8,
     paddingHorizontal: 8
+  },
+  tabButtonWithPlayer: {
+    paddingBottom: 4
   },
   activeTabContainer: {
     flexDirection: 'row',

@@ -11,42 +11,16 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { usePodcast, Podcast } from '@/context/PodcastContext'
 
-export default function FavoritesScreen() {
-  const favorites = [
-    {
-      id: 1,
-      title: 'The Daily Mindfulness',
-      creator: 'Sarah Johnson',
-      episode: 'Episode 12',
-      dateAdded: '2 days ago',
-      image: require('../../assets/images/icon.png')
-    },
-    {
-      id: 2,
-      title: 'Tech Insights Weekly',
-      creator: 'David Chen',
-      episode: 'Episode 45',
-      dateAdded: '3 days ago',
-      image: require('../../assets/images/icon.png')
-    },
-    {
-      id: 3,
-      title: 'History Uncovered',
-      creator: 'Emma Roberts',
-      episode: 'Episode 23',
-      dateAdded: '1 week ago',
-      image: require('../../assets/images/icon.png')
-    },
-    {
-      id: 4,
-      title: 'Science Today',
-      creator: 'Michael Thomas',
-      episode: 'Episode 08',
-      dateAdded: '2 weeks ago',
-      image: require('../../assets/images/icon.png')
-    }
-  ]
+export default function FavoritesScreen(): JSX.Element {
+  const {
+    favorites,
+    toggleFavorite,
+    downloadPodcast,
+    isDownloaded,
+    playPodcast
+  } = usePodcast()
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -72,8 +46,12 @@ export default function FavoritesScreen() {
           style={styles.favoritesList}
           contentContainerStyle={styles.favoritesListContent}
         >
-          {favorites.map((item, index) => (
-            <View key={item.id} style={styles.favoriteItem}>
+          {favorites.map((item: Podcast, index: number) => (
+            <TouchableOpacity
+              key={item.id}
+              style={styles.favoriteItem}
+              onPress={() => playPodcast(item)}
+            >
               <View
                 style={[
                   styles.favoriteImageContainer,
@@ -96,17 +74,38 @@ export default function FavoritesScreen() {
                 <Text style={styles.favoriteMeta}>
                   {item.creator} • {item.episode}
                 </Text>
-                <Text style={styles.favoriteDate}>Added {item.dateAdded}</Text>
+                <Text style={styles.favoriteDate}>
+                  Added {item.releaseDate}
+                </Text>
               </View>
               <View style={styles.favoriteActions}>
-                <TouchableOpacity>
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation()
+                    toggleFavorite(item)
+                  }}
+                >
                   <Ionicons name="heart" size={18} color="#ef4444" />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.playButton}>
-                  <Ionicons name="play" size={18} color="#9ca3af" />
+                <TouchableOpacity
+                  style={styles.playButton}
+                  onPress={(e) => {
+                    e.stopPropagation()
+                    downloadPodcast(item)
+                  }}
+                >
+                  <Ionicons
+                    name={
+                      isDownloaded(item.id)
+                        ? 'checkmark-circle'
+                        : 'download-outline'
+                    }
+                    size={18}
+                    color={isDownloaded(item.id) ? '#10b981' : '#9ca3af'}
+                  />
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       ) : (
@@ -173,7 +172,7 @@ const styles = StyleSheet.create({
   },
   favoritesListContent: {
     paddingHorizontal: 16,
-    paddingBottom: Platform.OS === 'ios' ? 140 : 100
+    paddingBottom: Platform.OS === 'ios' ? 190 : 160
   },
   favoriteItem: {
     flexDirection: 'row',
@@ -216,7 +215,6 @@ const styles = StyleSheet.create({
   },
   favoriteActions: {
     flexDirection: 'row',
-    width: 70,
     justifyContent: 'space-between'
   },
   playButton: {

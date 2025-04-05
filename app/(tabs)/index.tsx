@@ -10,33 +10,20 @@ import {
   Platform
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-
 import { Ionicons } from '@expo/vector-icons'
+import { useRouter } from 'expo-router'
+import { usePodcast, Podcast } from '@/context/PodcastContext'
 
-export default function HomeScreen() {
-  const podcasts = [
-    {
-      id: 1,
-      title: 'Enjoy The Nature',
-      creator: 'Webby',
-      episode: 'Episode 01',
-      image: require('../../assets/images/icon.png')
-    },
-    {
-      id: 2,
-      title: 'How reboot will change...',
-      creator: 'Webby',
-      episode: 'Episode 01',
-      image: require('../../assets/images/icon.png')
-    },
-    {
-      id: 3,
-      title: 'Enjoy The Nature',
-      creator: 'Webby',
-      episode: 'Episode 01',
-      image: require('../../assets/images/icon.png')
-    }
-  ]
+export default function HomeScreen(): JSX.Element {
+  const router = useRouter()
+  const {
+    podcasts,
+    playPodcast,
+    toggleFavorite,
+    isFavorite,
+    downloadPodcast,
+    isDownloaded
+  } = usePodcast()
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -72,14 +59,22 @@ export default function HomeScreen() {
           style={styles.podcastList}
           contentContainerStyle={styles.podcastListContent}
         >
-          {podcasts.map((podcast, index) => (
-            <View key={podcast.id} style={styles.podcastItem}>
+          {podcasts.map((podcast: Podcast, index: number) => (
+            <TouchableOpacity
+              key={podcast.id}
+              style={styles.podcastItem}
+              onPress={() => playPodcast(podcast)}
+            >
               <View
                 style={[
                   styles.podcastImageContainer,
                   {
                     backgroundColor:
-                      index === 0 ? '#111' : index === 1 ? '#0a547a' : '#6d3030'
+                      index % 3 === 0
+                        ? '#111'
+                        : index % 3 === 1
+                        ? '#0a547a'
+                        : '#6d3030'
                   }
                 ]}
               >
@@ -92,14 +87,37 @@ export default function HomeScreen() {
                 </Text>
               </View>
               <View style={styles.podcastActions}>
-                <TouchableOpacity>
-                  <Ionicons name="heart-outline" size={18} color="#9ca3af" />
+                <TouchableOpacity
+                  onPress={(e) => {
+                    e.stopPropagation()
+                    toggleFavorite(podcast)
+                  }}
+                >
+                  <Ionicons
+                    name={isFavorite(podcast.id) ? 'heart' : 'heart-outline'}
+                    size={18}
+                    color={isFavorite(podcast.id) ? '#ef4444' : '#9ca3af'}
+                  />
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.playButton}>
-                  <Ionicons name="play" size={18} color="#9ca3af" />
+                <TouchableOpacity
+                  style={styles.playButton}
+                  onPress={(e) => {
+                    e.stopPropagation()
+                    downloadPodcast(podcast)
+                  }}
+                >
+                  <Ionicons
+                    name={
+                      isDownloaded(podcast.id)
+                        ? 'checkmark-circle'
+                        : 'download-outline'
+                    }
+                    size={18}
+                    color={isDownloaded(podcast.id) ? '#10b981' : '#9ca3af'}
+                  />
                 </TouchableOpacity>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
@@ -185,7 +203,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   podcastListContent: {
-    paddingBottom: Platform.OS === 'ios' ? 140 : 100
+    paddingBottom: Platform.OS === 'ios' ? 190 : 160
   },
   podcastItem: {
     flexDirection: 'row',
@@ -220,7 +238,6 @@ const styles = StyleSheet.create({
   },
   podcastActions: {
     flexDirection: 'row',
-    width: 70,
     justifyContent: 'space-between'
   },
   playButton: {

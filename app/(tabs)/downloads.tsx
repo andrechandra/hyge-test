@@ -12,37 +12,10 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
+import { usePodcast, DownloadedPodcast } from '@/context/PodcastContext'
 
-export default function DownloadsScreen() {
-  const downloads = [
-    {
-      id: 1,
-      title: 'The Future of AI',
-      creator: 'Tech Visionaries',
-      episode: 'Episode 32',
-      downloadDate: 'Mar 30, 2023',
-      progress: 75,
-      image: require('../../assets/images/icon.png')
-    },
-    {
-      id: 2,
-      title: 'Financial Freedom',
-      creator: 'Money Matters',
-      episode: 'Episode 17',
-      downloadDate: 'Mar 28, 2023',
-      progress: 100,
-      image: require('../../assets/images/icon.png')
-    },
-    {
-      id: 3,
-      title: 'Healthy Living',
-      creator: 'Wellness Today',
-      episode: 'Episode 09',
-      downloadDate: 'Mar 25, 2023',
-      progress: 30,
-      image: require('../../assets/images/icon.png')
-    }
-  ]
+export default function DownloadsScreen(): JSX.Element {
+  const { downloads, removeDownload, playPodcast } = usePodcast()
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -69,11 +42,12 @@ export default function DownloadsScreen() {
           style={styles.downloadsList}
           contentContainerStyle={styles.downloadsListContent}
         >
-          {downloads.map((item, index) => (
+          {downloads.map((item: DownloadedPodcast, index: number) => (
             <Pressable
               key={item.id}
               style={styles.downloadItem}
               android_ripple={{ color: '#333333' }}
+              onPress={() => playPodcast(item)}
             >
               <View
                 style={[
@@ -104,16 +78,14 @@ export default function DownloadsScreen() {
                   <Text style={styles.downloadDate}>{item.downloadDate}</Text>
                 </View>
               </View>
-              <TouchableOpacity style={styles.downloadActions}>
-                <Ionicons
-                  name={
-                    item.progress < 100
-                      ? 'pause-circle-outline'
-                      : 'play-circle-outline'
-                  }
-                  size={28}
-                  color="#9ca3af"
-                />
+              <TouchableOpacity
+                style={styles.downloadActions}
+                onPress={(e) => {
+                  e.stopPropagation()
+                  removeDownload(item.id)
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color="#9ca3af" />
               </TouchableOpacity>
             </Pressable>
           ))}
@@ -183,7 +155,7 @@ const styles = StyleSheet.create({
   },
   downloadsListContent: {
     paddingHorizontal: 16,
-    paddingBottom: Platform.OS === 'ios' ? 140 : 100
+    paddingBottom: Platform.OS === 'ios' ? 190 : 160
   },
   downloadItem: {
     flexDirection: 'row',
