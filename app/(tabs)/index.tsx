@@ -12,11 +12,11 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
 import { usePodcast, Podcast } from '@/context/PodcastContext'
+import MiniPlayer from '@/components/MiniPlayer'
+import NowPlaying from '@/components/NowPlaying'
 
 export default function HomeScreen(): JSX.Element {
-  const router = useRouter()
   const {
     podcasts,
     playPodcast,
@@ -137,7 +137,7 @@ export default function HomeScreen(): JSX.Element {
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.playButton}
+                    style={styles.downloadButton}
                     onPress={(e) => {
                       e.stopPropagation()
                       downloadPodcast(podcast)
@@ -166,6 +166,8 @@ export default function HomeScreen(): JSX.Element {
           )}
         </ScrollView>
       </View>
+      <MiniPlayer />
+      <NowPlaying />
     </SafeAreaView>
   )
 }
@@ -291,7 +293,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between'
   },
-  playButton: {
+  downloadButton: {
     marginLeft: 12
   },
   noResultsContainer: {

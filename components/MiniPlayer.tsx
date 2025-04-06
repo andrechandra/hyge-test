@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useMemo } from 'react'
 import {
   View,
   Text,
@@ -18,12 +18,29 @@ const MiniPlayer: React.FC = () => {
   const {
     currentPodcast,
     isPlaying,
+    showMiniPlayer,
     togglePlayback,
     toggleFullPlayer,
-    showMiniPlayer
+    skipForward,
+    playbackPosition,
+    playbackDuration,
+    isBuffering,
+    formatTime
   } = usePodcast()
 
   if (!currentPodcast || !showMiniPlayer) return null
+
+  const progressPercentage = useMemo(() => {
+    if (!playbackDuration || playbackDuration <= 0) return 0
+    return Math.min((playbackPosition / playbackDuration) * 100, 100)
+  }, [playbackPosition, playbackDuration])
+
+  const duration = useMemo(() => {
+    if (playbackDuration > 0) {
+      return formatTime(playbackDuration)
+    }
+    return currentPodcast.duration
+  }, [playbackDuration, currentPodcast, formatTime])
 
   return (
     <TouchableOpacity
@@ -33,7 +50,10 @@ const MiniPlayer: React.FC = () => {
     >
       <View style={styles.progressBar}>
         <Animated.View
-          style={[styles.progressIndicator, { width: width * 0.3 }]}
+          style={[
+            styles.progressIndicator,
+            { width: `${progressPercentage}%` }
+          ]}
         />
       </View>
 
@@ -47,7 +67,9 @@ const MiniPlayer: React.FC = () => {
             {currentPodcast.title}
           </Text>
           <Text style={styles.creator} numberOfLines={1}>
-            {currentPodcast.creator}
+            {isBuffering
+              ? 'Buffering...'
+              : `${formatTime(playbackPosition)} / ${duration}`}
           </Text>
         </View>
 
@@ -58,11 +80,12 @@ const MiniPlayer: React.FC = () => {
               e.stopPropagation()
               togglePlayback()
             }}
+            disabled={isBuffering}
           >
             <Ionicons
               name={isPlaying ? 'pause' : 'play'}
               size={24}
-              color="white"
+              color={isBuffering ? '#666' : 'white'}
             />
           </TouchableOpacity>
 
@@ -70,9 +93,15 @@ const MiniPlayer: React.FC = () => {
             style={styles.controlButton}
             onPress={(e) => {
               e.stopPropagation()
+              skipForward(30)
             }}
+            disabled={isBuffering}
           >
-            <Ionicons name="play-forward" size={24} color="white" />
+            <Ionicons
+              name="play-forward"
+              size={24}
+              color={isBuffering ? '#666' : 'white'}
+            />
           </TouchableOpacity>
         </View>
       </View>

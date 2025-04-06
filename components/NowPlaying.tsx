@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   View,
   Text,
@@ -9,13 +9,12 @@ import {
   Animated,
   SafeAreaView,
   Platform,
-  PanResponder,
-  GestureResponderEvent,
-  PanResponderGestureState
+  PanResponder
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { usePodcast } from '../context/PodcastContext'
 import { BlurView } from 'expo-blur'
+import Slider from '@react-native-community/slider'
 
 const { width, height } = Dimensions.get('window')
 
@@ -28,16 +27,37 @@ const NowPlaying: React.FC = () => {
     toggleFullPlayer,
     toggleFavorite,
     isFavorite,
-    setShowFullPlayer
+    setShowFullPlayer,
+    playbackPosition,
+    playbackDuration,
+    isBuffering,
+    seekTo,
+    skipForward,
+    skipBackward,
+    formatTime,
+    changePlaybackRate,
+    playbackRate
   } = usePodcast()
 
-  const [sliderValue, setSliderValue] = useState<number>(30)
-  const [currentTime, setCurrentTime] = useState<string>('10:22')
-  const [totalTime, setTotalTime] = useState<string>(
-    currentPodcast?.duration || '30:00'
-  )
+  const [sliderValue, setSliderValue] = useState<number>(0)
+  const [isDragging, setIsDragging] = useState<boolean>(false)
+  const [playbackRates] = useState<number[]>([0.75, 1.0, 1.25, 1.5, 1.75, 2.0])
+  const [showRates, setShowRates] = useState<boolean>(false)
 
   const slideAnim = useRef(new Animated.Value(height)).current
+
+  const duration = useMemo(() => {
+    if (playbackDuration > 0) {
+      return formatTime(playbackDuration)
+    }
+    return currentPodcast?.duration || '00:00'
+  }, [playbackDuration, currentPodcast, formatTime])
+
+  useEffect(() => {
+    if (!isDragging && playbackDuration > 0) {
+      setSliderValue(playbackPosition)
+    }
+  }, [playbackPosition, playbackDuration, isDragging])
 
   const panResponder = useRef(
     PanResponder.create({
@@ -88,6 +108,20 @@ const NowPlaying: React.FC = () => {
 
   const favorited = isFavorite(currentPodcast.id)
 
+  // Slider handlers
+  const onSliderValueChange = (value: number) => {
+    setSliderValue(value)
+  }
+
+  const onSliderSlidingStart = () => {
+    setIsDragging(true)
+  }
+
+  const onSliderSlidingComplete = async (value: number) => {
+    setIsDragging(false)
+    await seekTo(value)
+  }
+
   return (
     <Animated.View
       style={[
@@ -100,8 +134,8 @@ const NowPlaying: React.FC = () => {
     >
       <BlurView intensity={90} style={StyleSheet.absoluteFill} tint="dark" />
 
-      <SafeAreaView style={styles.container} {...panResponder.panHandlers}>
-        <View style={styles.header}>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header} {...panResponder.panHandlers}>
           <TouchableOpacity
             style={styles.headerButton}
             onPress={toggleFullPlayer}
@@ -111,14 +145,49 @@ const NowPlaying: React.FC = () => {
 
           <Text style={styles.headerTitle}>Now Playing</Text>
 
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="ellipsis-horizontal" size={24} color="white" />
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => setShowRates(!showRates)}
+          >
+            <Ionicons name="options-outline" size={24} color="white" />
           </TouchableOpacity>
         </View>
+
+        {showRates && (
+          <View style={styles.ratesContainer}>
+            <Text style={styles.ratesTitle}>Playback Speed</Text>
+            <View style={styles.rateButtons}>
+              {playbackRates.map((rate) => (
+                <TouchableOpacity
+                  key={rate}
+                  style={[
+                    styles.rateButton,
+                    playbackRate === rate && styles.activeRateButton
+                  ]}
+                  onPress={() => changePlaybackRate(rate)}
+                >
+                  <Text
+                    style={[
+                      styles.rateText,
+                      playbackRate === rate && styles.activeRateText
+                    ]}
+                  >
+                    {rate}x
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
 
         <View style={styles.content}>
           <View style={styles.imageContainer}>
             <Image source={currentPodcast.image} style={styles.image} />
+            {isBuffering && (
+              <View style={styles.bufferingOverlay}>
+                <Text style={styles.bufferingText}>Buffering...</Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.podcastInfo}>
@@ -127,15 +196,25 @@ const NowPlaying: React.FC = () => {
           </View>
 
           <View style={styles.progressContainer}>
-            <View style={styles.progressBar}>
-              <Animated.View
-                style={[styles.progressIndicator, { width: `${sliderValue}%` }]}
-              />
-            </View>
+            <Slider
+              style={styles.slider}
+              minimumValue={0}
+              maximumValue={playbackDuration > 0 ? playbackDuration : 1}
+              value={sliderValue}
+              onValueChange={onSliderValueChange}
+              onSlidingStart={onSliderSlidingStart}
+              onSlidingComplete={onSliderSlidingComplete}
+              minimumTrackTintColor="#3b82f6"
+              maximumTrackTintColor="#444"
+              thumbTintColor="#3b82f6"
+              disabled={isBuffering || playbackDuration === 0}
+            />
 
             <View style={styles.timeInfo}>
-              <Text style={styles.timeText}>{currentTime}</Text>
-              <Text style={styles.timeText}>{totalTime}</Text>
+              <Text style={styles.timeText}>
+                {formatTime(isDragging ? sliderValue : playbackPosition)}
+              </Text>
+              <Text style={styles.timeText}>{duration}</Text>
             </View>
           </View>
 
@@ -144,13 +223,22 @@ const NowPlaying: React.FC = () => {
               <Ionicons name="shuffle" size={24} color="#9ca3af" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.mainControl}>
-              <Ionicons name="play-skip-back" size={30} color="white" />
+            <TouchableOpacity
+              style={styles.mainControl}
+              onPress={() => skipBackward(30)}
+              disabled={isBuffering}
+            >
+              <Ionicons
+                name="play-skip-back"
+                size={30}
+                color={isBuffering ? '#666' : 'white'}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.playButton}
+              style={[styles.playButton, isBuffering && { opacity: 0.6 }]}
               onPress={togglePlayback}
+              disabled={isBuffering}
             >
               <View
                 style={[
@@ -166,8 +254,16 @@ const NowPlaying: React.FC = () => {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.mainControl}>
-              <Ionicons name="play-skip-forward" size={30} color="white" />
+            <TouchableOpacity
+              style={styles.mainControl}
+              onPress={() => skipForward(30)}
+              disabled={isBuffering}
+            >
+              <Ionicons
+                name="play-skip-forward"
+                size={30}
+                color={isBuffering ? '#666' : 'white'}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.secondaryControl}>
@@ -187,8 +283,15 @@ const NowPlaying: React.FC = () => {
               />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.additionalButton}>
-              <Ionicons name="time-outline" size={24} color="#9ca3af" />
+            <TouchableOpacity
+              style={styles.additionalButton}
+              onPress={() =>
+                changePlaybackRate(
+                  playbackRate >= 2 ? 0.75 : playbackRate + 0.25
+                )
+              }
+            >
+              <Text style={styles.speedText}>{playbackRate}x</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.additionalButton}>
@@ -261,11 +364,27 @@ const styles = StyleSheet.create({
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.44,
-    shadowRadius: 10.32
+    shadowRadius: 10.32,
+    position: 'relative'
   },
   image: {
     width: '100%',
     height: '100%'
+  },
+  bufferingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  bufferingText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '500'
   },
   podcastInfo: {
     alignItems: 'center',
@@ -288,16 +407,10 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 20
   },
-  progressBar: {
-    height: 4,
-    backgroundColor: '#444',
-    borderRadius: 2,
-    marginBottom: 8
-  },
-  progressIndicator: {
-    height: '100%',
-    backgroundColor: '#3b82f6',
-    borderRadius: 2
+  slider: {
+    width: '100%',
+    height: 40,
+    marginBottom: -10
   },
   timeInfo: {
     flexDirection: 'row',
@@ -342,7 +455,14 @@ const styles = StyleSheet.create({
     marginBottom: 30
   },
   additionalButton: {
-    padding: 12
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  speedText: {
+    color: '#9ca3af',
+    fontSize: 14,
+    fontWeight: '500'
   },
   episode: {
     width: '100%',
@@ -366,6 +486,42 @@ const styles = StyleSheet.create({
   episodeDate: {
     color: '#9ca3af',
     fontSize: 12
+  },
+  ratesContainer: {
+    backgroundColor: 'rgba(31, 41, 55, 0.8)',
+    padding: 12,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 12
+  },
+  ratesTitle: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8
+  },
+  rateButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap'
+  },
+  rateButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#2a2a2a',
+    marginRight: 8,
+    marginBottom: 8
+  },
+  activeRateButton: {
+    backgroundColor: '#3b82f6'
+  },
+  rateText: {
+    color: '#9ca3af',
+    fontSize: 14
+  },
+  activeRateText: {
+    color: 'white',
+    fontWeight: '500'
   }
 })
 
