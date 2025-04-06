@@ -28,19 +28,34 @@ const MiniPlayer: React.FC = () => {
     formatTime
   } = usePodcast()
 
-  if (!currentPodcast || !showMiniPlayer) return null
-
   const progressPercentage = useMemo(() => {
     if (!playbackDuration || playbackDuration <= 0) return 0
     return Math.min((playbackPosition / playbackDuration) * 100, 100)
   }, [playbackPosition, playbackDuration])
 
   const duration = useMemo(() => {
+    if (!currentPodcast) return '00:00'
     if (playbackDuration > 0) {
       return formatTime(playbackDuration)
     }
     return currentPodcast.duration
   }, [playbackDuration, currentPodcast, formatTime])
+
+  if (!currentPodcast || !showMiniPlayer) return null
+
+  const renderImage = () => {
+    if (typeof currentPodcast.image === 'string') {
+      return (
+        <Image
+          source={{ uri: currentPodcast.image }}
+          style={styles.image}
+          defaultSource={require('../assets/images/icon.png')}
+        />
+      )
+    } else {
+      return <Image source={currentPodcast.image} style={styles.image} />
+    }
+  }
 
   return (
     <TouchableOpacity
@@ -58,9 +73,7 @@ const MiniPlayer: React.FC = () => {
       </View>
 
       <View style={styles.content}>
-        <View style={styles.imageContainer}>
-          <Image source={currentPodcast.image} style={styles.image} />
-        </View>
+        <View style={styles.imageContainer}>{renderImage()}</View>
 
         <View style={styles.infoContainer}>
           <Text style={styles.title} numberOfLines={1}>
@@ -81,6 +94,7 @@ const MiniPlayer: React.FC = () => {
               togglePlayback()
             }}
             disabled={isBuffering}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
             <Ionicons
               name={isPlaying ? 'pause' : 'play'}
@@ -96,6 +110,7 @@ const MiniPlayer: React.FC = () => {
               skipForward(30)
             }}
             disabled={isBuffering}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
             <Ionicons
               name="play-forward"
@@ -145,7 +160,8 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 4,
     overflow: 'hidden',
-    marginRight: 12
+    marginRight: 12,
+    backgroundColor: '#222'
   },
   image: {
     width: '100%',
@@ -168,7 +184,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row'
   },
   controlButton: {
-    marginLeft: 16
+    marginLeft: 16,
+    padding: 4
   }
 })
 

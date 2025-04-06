@@ -6,21 +6,26 @@ import React, {
   useEffect,
   useRef
 } from 'react'
-import { ImageSourcePropType, AppState, AppStateStatus } from 'react-native'
+import {
+  ImageSourcePropType,
+  AppState,
+  AppStateStatus,
+  Platform
+} from 'react-native'
 import { Audio } from 'expo-av'
 import * as FileSystem from 'expo-file-system'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 
 export interface Podcast {
-  id: number
+  id: string
   title: string
   creator: string
   episode: string
   description: string
   duration: string
   releaseDate: string
-  image: ImageSourcePropType
-  audioUrl?: string | number
+  image: ImageSourcePropType | string
+  audioUrl?: string
 }
 
 export interface DownloadedPodcast extends Podcast {
@@ -37,6 +42,11 @@ interface PodcastContextType {
   showFullPlayer: boolean
   favorites: Podcast[]
   downloads: DownloadedPodcast[]
+  // API and loading states
+  isLoading: boolean
+  hasError: boolean
+  loadMore: () => void
+  refreshPodcasts: () => Promise<void>
   // Audio state
   soundObject: Audio.Sound | null
   playbackPosition: number
@@ -48,10 +58,10 @@ interface PodcastContextType {
   togglePlayback: () => Promise<void>
   toggleFullPlayer: () => void
   toggleFavorite: (podcast: Podcast) => void
-  isFavorite: (podcastId: number) => boolean
+  isFavorite: (podcastId: string) => boolean
   downloadPodcast: (podcast: Podcast) => Promise<void>
-  isDownloaded: (podcastId: number) => boolean
-  removeDownload: (podcastId: number) => void
+  isDownloaded: (podcastId: string) => boolean
+  removeDownload: (podcastId: string) => void
   setShowMiniPlayer: React.Dispatch<React.SetStateAction<boolean>>
   setShowFullPlayer: React.Dispatch<React.SetStateAction<boolean>>
   // Audio control methods
@@ -65,121 +75,70 @@ interface PodcastContextType {
 
 const PodcastContext = createContext<PodcastContextType | undefined>(undefined)
 
-// Sample data with working audio URLs
-const initialPodcasts: Podcast[] = [
-  {
-    id: 1,
-    title: 'Enjoy The Nature',
-    creator: 'Webby',
-    episode: 'Episode 01',
-    description:
-      'A calming episode about the natural world and how to connect with it.',
-    duration: '32:45',
-    releaseDate: 'Mar 15, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
-  },
-  {
-    id: 2,
-    title: 'How reboot will change...',
-    creator: 'Webby',
-    episode: 'Episode 01',
-    description:
-      'Exploring the concept of rebooting your life and starting fresh.',
-    duration: '28:10',
-    releaseDate: 'Mar 10, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
-  },
-  {
-    id: 3,
-    title: 'The Daily Mindfulness',
-    creator: 'Sarah Johnson',
-    episode: 'Episode 12',
-    description: 'Practical mindfulness techniques for your everyday routine.',
-    duration: '24:30',
-    releaseDate: 'Mar 05, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: require('../assets/audio/sample_audio.mp3') // Local asset for testing
-  },
-  {
-    id: 4,
-    title: 'Tech Insights Weekly',
-    creator: 'David Chen',
-    episode: 'Episode 45',
-    description: 'The latest trends and innovations in the tech world.',
-    duration: '45:15',
-    releaseDate: 'Feb 28, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
-  },
-  {
-    id: 5,
-    title: 'History Uncovered',
-    creator: 'Emma Roberts',
-    episode: 'Episode 23',
-    description:
-      'Fascinating stories from history that you might not know about.',
-    duration: '38:20',
-    releaseDate: 'Feb 20, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
-  },
-  {
-    id: 6,
-    title: 'Science Today',
-    creator: 'Michael Thomas',
-    episode: 'Episode 08',
-    description:
-      'Breaking down complex scientific concepts in an accessible way.',
-    duration: '41:05',
-    releaseDate: 'Feb 15, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3'
-  },
-  {
-    id: 7,
-    title: 'The Future of AI',
-    creator: 'Tech Visionaries',
-    episode: 'Episode 32',
-    description:
-      'Exploring the potential impact of artificial intelligence on society.',
-    duration: '52:30',
-    releaseDate: 'Feb 10, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3'
-  },
-  {
-    id: 8,
-    title: 'Financial Freedom',
-    creator: 'Money Matters',
-    episode: 'Episode 17',
-    description:
-      'Strategies for achieving financial independence and security.',
-    duration: '35:45',
-    releaseDate: 'Feb 05, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-7.mp3'
-  },
-  {
-    id: 9,
-    title: 'Healthy Living',
-    creator: 'Wellness Today',
-    episode: 'Episode 09',
-    description: 'Tips and advice for maintaining a healthy lifestyle.',
-    duration: '29:15',
-    releaseDate: 'Jan 30, 2023',
-    image: require('../assets/images/icon.png'),
-    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3'
-  }
-]
-
 // Storage keys
 const STORAGE_KEYS = {
   CURRENT_PODCAST: '@podcast_app/current_podcast',
   PLAYBACK_POSITION: '@podcast_app/playback_position',
   FAVORITES: '@podcast_app/favorites',
   DOWNLOADS: '@podcast_app/downloads'
+}
+
+// SimipleCast API Configuration
+const API_BASE_URL = 'https://api.simplecast.com'
+const PODCAST_ID = '2de31959-5831-476e-8c89-02a2a32885ef'
+const EPISODES_PER_PAGE = 20 // Using larger page size to reduce API calls
+
+// Helper function for formatting duration
+const formatDuration = (seconds: number): string => {
+  if (!seconds) return '00:00'
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = Math.floor(seconds % 60)
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+}
+
+// Helper function for formatting date
+const formatDate = (dateString: string): string => {
+  if (!dateString) return 'Unknown Date'
+
+  try {
+    const date = new Date(dateString)
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    })
+  } catch {
+    return 'Unknown Date'
+  }
+}
+
+// Sample data for testing - remove this when connecting to real API
+const generateSamplePodcasts = (page = 1, limit = 10) => {
+  return Array(limit)
+    .fill(null)
+    .map((_, i) => ({
+      id: `episode-${(page - 1) * limit + i + 1}`,
+      title: `Episode ${(page - 1) * limit + i + 1}: React Native Development`,
+      creator: 'React Native Radio',
+      episode: `Episode ${(page - 1) * limit + i + 1}`,
+      description:
+        'A podcast discussing React Native development strategies and best practices.',
+      duration: `${Math.floor(20 + Math.random() * 40)}:${Math.floor(
+        Math.random() * 60
+      )
+        .toString()
+        .padStart(2, '0')}`,
+      releaseDate: new Date(
+        Date.now() - ((page - 1) * limit + i) * 86400000 * 3
+      ).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      }),
+      image: require('../assets/images/icon.png'),
+      // This field would be populated with enclosure_url from the actual API
+      audioUrl: ''
+    }))
 }
 
 interface PodcastProviderProps {
@@ -189,6 +148,13 @@ interface PodcastProviderProps {
 export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   children
 }) => {
+  // API and data state
+  const [podcasts, setPodcasts] = useState<Podcast[]>([])
+  const [isLoading, setIsLoading] = useState<boolean>(true)
+  const [hasError, setHasError] = useState<boolean>(false)
+  const [page, setPage] = useState<number>(1)
+  const [hasMorePages, setHasMorePages] = useState<boolean>(true)
+
   // Original state
   const [currentPodcast, setCurrentPodcast] = useState<Podcast | null>(null)
   const [isPlaying, setIsPlaying] = useState<boolean>(false)
@@ -207,31 +173,40 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   // Refs
   const playbackUpdateInterval = useRef<NodeJS.Timeout | null>(null)
   const appStateRef = useRef(AppState.currentState)
+  const isMounted = useRef(true)
 
-  // Initialize Audio
+  // Initialize audio and load saved data
   useEffect(() => {
-    const setupAudio = async () => {
+    const init = async () => {
       try {
-        // Fix for interruptionModeIOS error - use numeric values instead of constants
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          // Using numeric values instead of potentially undefined constants
-          interruptionModeIOS: 1, // This is equivalent to INTERRUPTION_MODE_IOS_DO_NOT_MIX
-          playsInSilentModeIOS: true,
-          interruptionModeAndroid: 1, // This is equivalent to INTERRUPTION_MODE_ANDROID_DO_NOT_MIX
-          shouldDuckAndroid: true,
-          staysActiveInBackground: true,
-          playThroughEarpieceAndroid: false
-        })
+        await setupAudio()
+        await loadSavedData()
 
-        // Load previous session
-        await loadPreviousSession()
+        // Try to connect to the real API
+        try {
+          await fetchPodcasts(1, true)
+        } catch (apiError) {
+          console.error(
+            'Error connecting to API, falling back to sample data:',
+            apiError
+          )
+          // Fallback to sample data if API fails
+          const sampleData = generateSamplePodcasts(1)
+          setPodcasts(sampleData)
+          setIsLoading(false)
+        }
       } catch (error) {
-        console.error('Error setting up audio', error)
+        console.error('Error during initialization:', error)
+        if (isMounted.current) {
+          setHasError(true)
+          setIsLoading(false)
+        }
       }
     }
 
-    setupAudio()
+    init()
+
+    init()
 
     // Handle app state changes
     const subscription = AppState.addEventListener(
@@ -240,6 +215,8 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     )
 
     return () => {
+      isMounted.current = false
+
       // Cleanup
       if (playbackUpdateInterval.current) {
         clearInterval(playbackUpdateInterval.current)
@@ -250,21 +227,8 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     }
   }, [])
 
-  // App state change handler
-  const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-    if (
-      appStateRef.current === 'active' &&
-      nextAppState.match(/inactive|background/)
-    ) {
-      // App is going to background
-      await saveCurrentSession()
-    }
-
-    appStateRef.current = nextAppState
-  }
-
-  // Load previous session
-  const loadPreviousSession = async () => {
+  // Load saved data (favorites, downloads, current podcast)
+  const loadSavedData = async () => {
     try {
       // Load favorites
       const storedFavorites = await AsyncStorage.getItem(STORAGE_KEYS.FAVORITES)
@@ -296,7 +260,143 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         }
       }
     } catch (error) {
-      console.error('Error loading previous session', error)
+      console.error('Error loading saved data:', error)
+    }
+  }
+
+  // Fetch podcasts from Simplecast API
+  const fetchPodcasts = async (pageNumber: number, isRefresh = false) => {
+    if ((isLoading && !isRefresh) || (!hasMorePages && !isRefresh)) return
+
+    try {
+      setIsLoading(true)
+      setHasError(false)
+
+      // Build API URL with pagination
+      const apiUrl = `${API_BASE_URL}/podcasts/${PODCAST_ID}/episodes?limit=${EPISODES_PER_PAGE}&offset=${
+        (pageNumber - 1) * EPISODES_PER_PAGE
+      }`
+
+      console.log(`Fetching podcasts from: ${apiUrl}`)
+
+      const response = await fetch(apiUrl, {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json'
+          // Add any required authentication headers here
+          // 'Authorization': 'Bearer YOUR_TOKEN'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error(`API request failed with status ${response.status}`)
+      }
+
+      const data = await response.json()
+
+      if (!data || !Array.isArray(data.collection)) {
+        throw new Error('Invalid API response format')
+      }
+
+      console.log(`Received ${data.collection.length} episodes from API`)
+
+      // Map API data to our Podcast interface
+      const formattedEpisodes: Podcast[] = data.collection.map(
+        (episode: any) => ({
+          id: episode.id || '',
+          title: episode.title || 'Untitled Episode',
+          creator: 'React Native Radio',
+          episode: `Episode ${
+            episode.number || episode.next_episode_number || '?'
+          }`,
+          description: episode.description || '',
+          duration: formatDuration(episode.duration || 0),
+          releaseDate: formatDate(episode.published_at || ''),
+          image: episode.image_url || require('../assets/images/icon.png'),
+          audioUrl: episode.enclosure_url || ''
+        })
+      )
+
+      // Update state based on whether this is a refresh or pagination
+      if (isRefresh) {
+        if (isMounted.current) {
+          setPodcasts(formattedEpisodes)
+          setPage(1)
+        }
+      } else {
+        if (isMounted.current) {
+          setPodcasts((prev) => [...prev, ...formattedEpisodes])
+          setPage(pageNumber)
+        }
+      }
+
+      // Check if there are more pages based on pagination info
+      const hasNext = data.pages && data.pages.next
+      if (isMounted.current) {
+        setHasMorePages(!!hasNext)
+      }
+    } catch (error) {
+      console.error('Error fetching podcasts:', error)
+      if (isMounted.current) {
+        setHasError(true)
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsLoading(false)
+      }
+    }
+  }
+
+  // Load more podcasts function for pagination
+  const loadMore = () => {
+    if (!isLoading && hasMorePages) {
+      fetchPodcasts(page + 1)
+    }
+  }
+
+  // Refresh podcasts function
+  const refreshPodcasts = async () => {
+    return fetchPodcasts(1, true)
+  }
+
+  // Setup Audio
+  const setupAudio = async () => {
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        interruptionModeIOS: 1, // INTERRUPTION_MODE_IOS_DO_NOT_MIX
+        playsInSilentModeIOS: true,
+        interruptionModeAndroid: 1, // INTERRUPTION_MODE_ANDROID_DO_NOT_MIX
+        shouldDuckAndroid: true,
+        staysActiveInBackground: true,
+        playThroughEarpieceAndroid: false
+      })
+    } catch (error) {
+      console.error('Error setting up audio:', error)
+      throw error
+    }
+  }
+
+  // App state change handler
+  const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+    if (
+      appStateRef.current === 'active' &&
+      nextAppState.match(/inactive|background/)
+    ) {
+      // App is going to background
+      await saveCurrentSession()
+    }
+
+    appStateRef.current = nextAppState
+  }
+
+  // Load previous session
+  const loadPreviousSession = async () => {
+    try {
+      await loadSavedData()
+    } catch (error) {
+      console.error('Error loading previous session:', error)
     }
   }
 
@@ -321,12 +421,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         STORAGE_KEYS.FAVORITES,
         JSON.stringify(favorites)
       )
+
       await AsyncStorage.setItem(
         STORAGE_KEYS.DOWNLOADS,
         JSON.stringify(downloads)
       )
     } catch (error) {
-      console.error('Error saving session', error)
+      console.error('Error saving session:', error)
     }
   }
 
@@ -334,9 +435,12 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   const unloadSound = async () => {
     if (soundObject) {
       try {
-        await soundObject.unloadAsync()
+        const status = await soundObject.getStatusAsync()
+        if (status.isLoaded) {
+          await soundObject.unloadAsync()
+        }
       } catch (error) {
-        console.error('Error unloading sound', error)
+        console.error('Error unloading sound:', error)
       }
 
       setSoundObject(null)
@@ -352,13 +456,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     playbackUpdateInterval.current = setInterval(async () => {
       if (soundObject && isPlaying) {
         try {
-          const status = (await soundObject.getStatusAsync()) as any
+          const status = await soundObject.getStatusAsync()
           if (status.isLoaded) {
             setPlaybackPosition(status.positionMillis)
             setPlaybackDuration(status.durationMillis || 0)
           }
         } catch (error) {
-          console.error('Error getting playback status', error)
+          console.error('Error getting playback status:', error)
         }
       }
     }, 1000)
@@ -391,15 +495,6 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     setPlaybackPosition(status.positionMillis)
     setPlaybackDuration(status.durationMillis || 0)
 
-    // Debug log for tracking playback status (in development only)
-    // if (__DEV__) {
-    //   console.log(
-    //     `Playback: ${formatTime(status.positionMillis)}/${formatTime(
-    //       status.durationMillis
-    //     )}`
-    //   )
-    // }
-
     if (status.didJustFinish && !status.isLooping) {
       setIsPlaying(false)
       setPlaybackPosition(0)
@@ -427,43 +522,54 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         source = { uri: downloadedPodcast.localAudioPath }
       }
       // Then handle remote URLs
-      else if (
-        typeof podcast.audioUrl === 'string' &&
-        podcast.audioUrl.startsWith('http')
-      ) {
+      else if (podcast.audioUrl && podcast.audioUrl.startsWith('http')) {
         console.log('Playing from remote URL:', podcast.audioUrl)
         source = { uri: podcast.audioUrl }
       }
-      // Finally, handle local assets (numbers from require())
-      else if (typeof podcast.audioUrl === 'number') {
-        console.log('Playing from local asset ID:', podcast.audioUrl)
-        source = podcast.audioUrl
-      } else {
+      // Fallback if no audio source
+      else {
         console.error('No valid audio source available for this podcast')
         setIsBuffering(false)
+        alert('Unable to play podcast: No valid audio source found')
         return
       }
 
-      console.log('Creating sound with source:', JSON.stringify(source))
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          source,
+          {
+            positionMillis: 0,
+            shouldPlay: true,
+            rate: playbackRate,
+            progressUpdateIntervalMillis: 1000,
+            volume: 1.0
+          },
+          onPlaybackStatusUpdate
+        )
 
-      const { sound } = await Audio.Sound.createAsync(
-        source,
-        {
-          positionMillis: 0,
-          shouldPlay: true,
-          rate: playbackRate,
-          progressUpdateIntervalMillis: 1000,
-          volume: 1.0
-        },
-        onPlaybackStatusUpdate
-      )
+        setSoundObject(sound)
+        setIsPlaying(true)
+        startPlaybackUpdates()
+      } catch (audioError) {
+        console.error('Audio loading error:', audioError)
+        setIsBuffering(false)
+        setShowMiniPlayer(false)
 
-      setSoundObject(sound)
-      setIsPlaying(true)
-      startPlaybackUpdates()
+        // Show a more user-friendly error
+        if (Platform.OS === 'web') {
+          alert(
+            'This audio format may not be supported by your browser. Please try another podcast.'
+          )
+        } else {
+          alert(
+            'Unable to play this podcast. The audio format may not be supported.'
+          )
+        }
+      }
     } catch (error) {
       console.error('Error playing podcast:', error)
       setIsBuffering(false)
+      setShowMiniPlayer(false)
     }
   }
 
@@ -477,7 +583,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     }
 
     try {
-      const status = (await soundObject.getStatusAsync()) as any
+      const status = await soundObject.getStatusAsync()
 
       if (!status.isLoaded) {
         console.error('Sound object not loaded')
@@ -492,7 +598,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         startPlaybackUpdates()
       }
     } catch (error) {
-      console.error('Error toggling playback', error)
+      console.error('Error toggling playback:', error)
     }
   }
 
@@ -504,7 +610,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       await soundObject.setPositionAsync(position)
       setPlaybackPosition(position)
     } catch (error) {
-      console.error('Error seeking', error)
+      console.error('Error seeking:', error)
     }
   }
 
@@ -519,7 +625,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       )
       await seekTo(newPosition)
     } catch (error) {
-      console.error('Error skipping forward', error)
+      console.error('Error skipping forward:', error)
     }
   }
 
@@ -531,7 +637,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       const newPosition = Math.max(playbackPosition - seconds * 1000, 0)
       await seekTo(newPosition)
     } catch (error) {
-      console.error('Error skipping backward', error)
+      console.error('Error skipping backward:', error)
     }
   }
 
@@ -543,13 +649,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       await soundObject.setRateAsync(rate, true)
       setPlaybackRate(rate)
     } catch (error) {
-      console.error('Error changing playback rate', error)
+      console.error('Error changing playback rate:', error)
     }
   }
 
   // Format time
   const formatTime = (milliseconds: number): string => {
-    if (!milliseconds) return '00:00'
+    if (!milliseconds || isNaN(milliseconds)) return '00:00'
 
     const totalSeconds = Math.floor(milliseconds / 1000)
     const minutes = Math.floor(totalSeconds / 60)
@@ -569,25 +675,24 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   const toggleFavorite = (podcast: Podcast): void => {
     const isFavorited = favorites.some((fav) => fav.id === podcast.id)
 
+    let updatedFavorites: Podcast[]
     if (isFavorited) {
-      setFavorites(favorites.filter((fav) => fav.id !== podcast.id))
+      updatedFavorites = favorites.filter((fav) => fav.id !== podcast.id)
     } else {
-      setFavorites([...favorites, podcast])
+      updatedFavorites = [...favorites, podcast]
     }
+
+    setFavorites(updatedFavorites)
 
     // Save to storage
     AsyncStorage.setItem(
       STORAGE_KEYS.FAVORITES,
-      JSON.stringify(
-        isFavorited
-          ? favorites.filter((fav) => fav.id !== podcast.id)
-          : [...favorites, podcast]
-      )
-    )
+      JSON.stringify(updatedFavorites)
+    ).catch((err) => console.error('Error saving favorites:', err))
   }
 
   // Check if podcast is favorite
-  const isFavorite = (podcastId: number): boolean => {
+  const isFavorite = (podcastId: string): boolean => {
     return favorites.some((fav) => fav.id === podcastId)
   }
 
@@ -600,11 +705,8 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     }
 
     try {
-      // Handle string URLs for remote files
-      if (
-        typeof podcast.audioUrl === 'string' &&
-        podcast.audioUrl.startsWith('http')
-      ) {
+      // Handle remote audio URLs
+      if (podcast.audioUrl && podcast.audioUrl.startsWith('http')) {
         const fileName = `podcast-${podcast.id}.mp3`
         const filePath = `${FileSystem.documentDirectory}${fileName}`
 
@@ -620,7 +722,8 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
           localAudioPath: filePath
         }
 
-        setDownloads([...downloads, downloadWithProgress])
+        const updatedDownloads = [...downloads, downloadWithProgress]
+        setDownloads(updatedDownloads)
 
         // Start download
         const downloadResumable = FileSystem.createDownloadResumable(
@@ -649,36 +752,18 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
 
         if (result && result.uri) {
           // Update with completed status
-          const updatedDownloads = downloads.map((dl) =>
+          const finalDownloads = downloads.map((dl) =>
             dl.id === podcast.id
               ? { ...dl, progress: 100, localAudioPath: result.uri }
               : dl
           )
 
-          setDownloads(updatedDownloads)
+          setDownloads(finalDownloads)
           AsyncStorage.setItem(
             STORAGE_KEYS.DOWNLOADS,
-            JSON.stringify(updatedDownloads)
-          )
+            JSON.stringify(finalDownloads)
+          ).catch((err) => console.error('Error saving downloads:', err))
         }
-      } else {
-        // For local assets, simulate a download
-        const downloadWithProgress: DownloadedPodcast = {
-          ...podcast,
-          progress: 100,
-          downloadDate: new Date().toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-          })
-        }
-
-        const updatedDownloads = [...downloads, downloadWithProgress]
-        setDownloads(updatedDownloads)
-        AsyncStorage.setItem(
-          STORAGE_KEYS.DOWNLOADS,
-          JSON.stringify(updatedDownloads)
-        )
       }
     } catch (error) {
       console.error('Error downloading podcast:', error)
@@ -689,12 +774,12 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Check if podcast is downloaded
-  const isDownloaded = (podcastId: number): boolean => {
-    return downloads.some((dl) => dl.id === podcastId)
+  const isDownloaded = (podcastId: string): boolean => {
+    return downloads.some((dl) => dl.id === podcastId && dl.progress === 100)
   }
 
   // Remove download
-  const removeDownload = (podcastId: number): void => {
+  const removeDownload = (podcastId: string): void => {
     const podcastToRemove = downloads.find((dl) => dl.id === podcastId)
 
     if (podcastToRemove?.localAudioPath) {
@@ -706,22 +791,30 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
 
     const updatedDownloads = downloads.filter((dl) => dl.id !== podcastId)
     setDownloads(updatedDownloads)
+
     AsyncStorage.setItem(
       STORAGE_KEYS.DOWNLOADS,
       JSON.stringify(updatedDownloads)
+    ).catch((err) =>
+      console.error('Error saving downloads after removal:', err)
     )
   }
 
   return (
     <PodcastContext.Provider
       value={{
-        podcasts: initialPodcasts,
+        podcasts,
         currentPodcast,
         isPlaying,
         showMiniPlayer,
         showFullPlayer,
         favorites,
         downloads,
+        // API and loading states
+        isLoading,
+        hasError,
+        loadMore,
+        refreshPodcasts,
         // Audio state
         soundObject,
         playbackPosition,

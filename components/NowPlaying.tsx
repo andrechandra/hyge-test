@@ -102,13 +102,12 @@ const NowPlaying: React.FC = () => {
         useNativeDriver: true
       }).start()
     }
-  }, [showFullPlayer])
+  }, [showFullPlayer, slideAnim, height])
 
   if (!currentPodcast) return null
 
   const favorited = isFavorite(currentPodcast.id)
 
-  // Slider handlers
   const onSliderValueChange = (value: number) => {
     setSliderValue(value)
   }
@@ -120,6 +119,20 @@ const NowPlaying: React.FC = () => {
   const onSliderSlidingComplete = async (value: number) => {
     setIsDragging(false)
     await seekTo(value)
+  }
+
+  const renderImage = () => {
+    if (typeof currentPodcast.image === 'string') {
+      return (
+        <Image
+          source={{ uri: currentPodcast.image }}
+          style={styles.image}
+          defaultSource={require('../assets/images/icon.png')}
+        />
+      )
+    } else {
+      return <Image source={currentPodcast.image} style={styles.image} />
+    }
   }
 
   return (
@@ -139,6 +152,7 @@ const NowPlaying: React.FC = () => {
           <TouchableOpacity
             style={styles.headerButton}
             onPress={toggleFullPlayer}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
             <Ionicons name="chevron-down" size={24} color="white" />
           </TouchableOpacity>
@@ -148,6 +162,7 @@ const NowPlaying: React.FC = () => {
           <TouchableOpacity
             style={styles.headerButton}
             onPress={() => setShowRates(!showRates)}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
             <Ionicons name="options-outline" size={24} color="white" />
           </TouchableOpacity>
@@ -182,7 +197,7 @@ const NowPlaying: React.FC = () => {
 
         <View style={styles.content}>
           <View style={styles.imageContainer}>
-            <Image source={currentPodcast.image} style={styles.image} />
+            {renderImage()}
             {isBuffering && (
               <View style={styles.bufferingOverlay}>
                 <Text style={styles.bufferingText}>Buffering...</Text>
@@ -191,8 +206,12 @@ const NowPlaying: React.FC = () => {
           </View>
 
           <View style={styles.podcastInfo}>
-            <Text style={styles.title}>{currentPodcast.title}</Text>
-            <Text style={styles.creator}>{currentPodcast.creator}</Text>
+            <Text style={styles.title} numberOfLines={2}>
+              {currentPodcast.title}
+            </Text>
+            <Text style={styles.creator} numberOfLines={1}>
+              {currentPodcast.creator}
+            </Text>
           </View>
 
           <View style={styles.progressContainer}>
@@ -219,7 +238,10 @@ const NowPlaying: React.FC = () => {
           </View>
 
           <View style={styles.controls}>
-            <TouchableOpacity style={styles.secondaryControl}>
+            <TouchableOpacity
+              style={styles.secondaryControl}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            >
               <Ionicons name="shuffle" size={24} color="#9ca3af" />
             </TouchableOpacity>
 
@@ -227,6 +249,7 @@ const NowPlaying: React.FC = () => {
               style={styles.mainControl}
               onPress={() => skipBackward(30)}
               disabled={isBuffering}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
             >
               <Ionicons
                 name="play-skip-back"
@@ -258,6 +281,7 @@ const NowPlaying: React.FC = () => {
               style={styles.mainControl}
               onPress={() => skipForward(30)}
               disabled={isBuffering}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
             >
               <Ionicons
                 name="play-skip-forward"
@@ -266,7 +290,10 @@ const NowPlaying: React.FC = () => {
               />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.secondaryControl}>
+            <TouchableOpacity
+              style={styles.secondaryControl}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            >
               <Ionicons name="repeat" size={24} color="#9ca3af" />
             </TouchableOpacity>
           </View>
@@ -275,6 +302,7 @@ const NowPlaying: React.FC = () => {
             <TouchableOpacity
               style={styles.additionalButton}
               onPress={() => currentPodcast && toggleFavorite(currentPodcast)}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
             >
               <Ionicons
                 name={favorited ? 'heart' : 'heart-outline'}
@@ -290,15 +318,22 @@ const NowPlaying: React.FC = () => {
                   playbackRate >= 2 ? 0.75 : playbackRate + 0.25
                 )
               }
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
             >
               <Text style={styles.speedText}>{playbackRate}x</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.additionalButton}>
+            <TouchableOpacity
+              style={styles.additionalButton}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            >
               <Ionicons name="share-social-outline" size={24} color="#9ca3af" />
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.additionalButton}>
+            <TouchableOpacity
+              style={styles.additionalButton}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            >
               <Ionicons name="list-outline" size={24} color="#9ca3af" />
             </TouchableOpacity>
           </View>
