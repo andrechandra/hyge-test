@@ -18,6 +18,8 @@ import { usePodcast, Podcast } from '@/context/PodcastContext'
 import MiniPlayer from '@/components/MiniPlayer'
 import NowPlaying from '@/components/NowPlaying'
 
+const PODCASTS_PER_PAGE = 10
+
 export default function HomeScreen(): JSX.Element {
   const {
     podcasts,
@@ -35,7 +37,11 @@ export default function HomeScreen(): JSX.Element {
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [filteredPodcasts, setFilteredPodcasts] = useState<Podcast[]>([])
   const [refreshing, setRefreshing] = useState<boolean>(false)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [paginatedPodcasts, setPaginatedPodcasts] = useState<Podcast[]>([])
+  const [hasMorePages, setHasMorePages] = useState<boolean>(true)
 
+  // Filter podcasts based on search term
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredPodcasts(podcasts)
@@ -47,16 +53,32 @@ export default function HomeScreen(): JSX.Element {
       )
       setFilteredPodcasts(filtered)
     }
+    // Reset pagination when search term changes
+    setCurrentPage(1)
   }, [searchTerm, podcasts])
+
+  // Update paginated podcasts based on current page
+  useEffect(() => {
+    const startIndex = 0
+    const endIndex = currentPage * PODCASTS_PER_PAGE
+
+    const podcastsToShow = filteredPodcasts.slice(startIndex, endIndex)
+    setPaginatedPodcasts(podcastsToShow)
+
+    // Check if we have more pages
+    setHasMorePages(filteredPodcasts.length > endIndex)
+  }, [filteredPodcasts, currentPage])
 
   const clearSearch = useCallback(() => {
     setSearchTerm('')
+    setCurrentPage(1)
   }, [])
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true)
     try {
       await refreshPodcasts()
+      setCurrentPage(1)
     } catch (error) {
       console.error('Error refreshing podcasts:', error)
     } finally {
@@ -64,11 +86,16 @@ export default function HomeScreen(): JSX.Element {
     }
   }, [refreshPodcasts])
 
-  const handleEndReached = useCallback(() => {
-    if (!searchTerm && !isLoading) {
-      loadMore()
+  // Load next page of podcasts
+  const handleLoadMore = useCallback(() => {
+    if (!isLoading && hasMorePages) {
+      // If we need more podcasts from the API
+      if (filteredPodcasts.length <= currentPage * PODCASTS_PER_PAGE) {
+        loadMore()
+      }
+      setCurrentPage((prevPage) => prevPage + 1)
     }
-  }, [searchTerm, isLoading, loadMore])
+  }, [isLoading, hasMorePages, filteredPodcasts.length, currentPage, loadMore])
 
   const renderPodcastItem = useCallback(
     ({ item: podcast, index }: { item: Podcast; index: number }) => {
@@ -148,15 +175,56 @@ export default function HomeScreen(): JSX.Element {
     [playPodcast, toggleFavorite, isFavorite, downloadPodcast, isDownloaded]
   )
 
-  const renderListFooter = useCallback(() => {
-    if (!isLoading || refreshing) return null
+  const renderLoadMoreButton = useCallback(() => {
+    if (!hasMorePages) return null
 
     return (
-      <View style={styles.loaderFooter}>
-        <ActivityIndicator size="small" color="#9ca3af" />
-      </View>
+      <TouchableOpacity
+        style={styles.loadMoreButton}
+        onPress={handleLoadMore}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <ActivityIndicator size="small" color="white" />
+        ) : (
+          <>
+            <Text style={styles.loadMoreText}>Load More</Text>
+            <Ionicons name="chevron-down" size={16} color="white" />
+          </>
+        )}
+      </TouchableOpacity>
     )
-  }, [isLoading, refreshing])
+  }, [hasMorePages, handleLoadMore, isLoading])
+
+  const renderListFooter = useCallback(() => {
+    if (isLoading && !refreshing && paginatedPodcasts.length === 0) {
+      return (
+        <View style={styles.loaderFooter}>
+          <ActivityIndicator size="small" color="#9ca3af" />
+        </View>
+      )
+    }
+
+    if (paginatedPodcasts.length > 0) {
+      return (
+        <View style={styles.footerContainer}>
+          <Text style={styles.paginationInfo}>
+            Showing {paginatedPodcasts.length} of {filteredPodcasts.length}{' '}
+            podcasts
+          </Text>
+          {renderLoadMoreButton()}
+        </View>
+      )
+    }
+
+    return null
+  }, [
+    isLoading,
+    refreshing,
+    paginatedPodcasts.length,
+    filteredPodcasts.length,
+    renderLoadMoreButton
+  ])
 
   const renderEmptyList = useCallback(() => {
     if (isLoading && podcasts.length === 0) {
@@ -256,16 +324,15 @@ export default function HomeScreen(): JSX.Element {
           renderErrorState()
         ) : (
           <FlatList
-            data={filteredPodcasts}
+            data={paginatedPodcasts}
             renderItem={renderPodcastItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={[
               styles.podcastListContent,
-              filteredPodcasts.length === 0 && styles.emptyListContainer
+              paginatedPodcasts.length === 0 && styles.emptyListContainer
             ]}
             ListEmptyComponent={renderEmptyList}
             ListFooterComponent={renderListFooter}
-            onEndReached={handleEndReached}
             onEndReachedThreshold={0.5}
             refreshControl={
               <RefreshControl
@@ -463,5 +530,28 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: 'white',
     fontWeight: '500'
+  },
+  footerContainer: {
+    alignItems: 'center',
+    paddingVertical: 16
+  },
+  paginationInfo: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginBottom: 8
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    justifyContent: 'center'
+  },
+  loadMoreText: {
+    color: 'white',
+    fontWeight: '500',
+    marginRight: 4
   }
 })

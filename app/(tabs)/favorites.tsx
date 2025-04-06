@@ -1,17 +1,22 @@
-import React from 'react'
+import React, { useCallback, useState, useEffect } from 'react'
 import {
   View,
   Text,
   Image,
   StyleSheet,
-  ScrollView,
   TouchableOpacity,
   StatusBar,
-  Platform
+  Platform,
+  FlatList,
+  ActivityIndicator
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { usePodcast, Podcast } from '@/context/PodcastContext'
+import MiniPlayer from '@/components/MiniPlayer'
+import NowPlaying from '@/components/NowPlaying'
+
+const PODCASTS_PER_PAGE = 10
 
 export default function FavoritesScreen(): JSX.Element {
   const {
@@ -21,6 +26,157 @@ export default function FavoritesScreen(): JSX.Element {
     isDownloaded,
     playPodcast
   } = usePodcast()
+
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [paginatedFavorites, setPaginatedFavorites] = useState<Podcast[]>([])
+  const [hasMorePages, setHasMorePages] = useState<boolean>(true)
+  const [isLoading, setIsLoading] = useState<boolean>(false)
+
+  // Update paginated favorites based on current page
+  useEffect(() => {
+    const startIndex = 0
+    const endIndex = currentPage * PODCASTS_PER_PAGE
+
+    const favoritesToShow = favorites.slice(startIndex, endIndex)
+    setPaginatedFavorites(favoritesToShow)
+
+    // Check if we have more pages
+    setHasMorePages(favorites.length > endIndex)
+  }, [favorites, currentPage])
+
+  // Load next page of favorites
+  const handleLoadMore = useCallback(() => {
+    if (!isLoading && hasMorePages) {
+      setIsLoading(true)
+      // Simulate loading
+      setTimeout(() => {
+        setCurrentPage((prevPage) => prevPage + 1)
+        setIsLoading(false)
+      }, 500) // Add a small delay to simulate loading
+    }
+  }, [isLoading, hasMorePages])
+
+  const renderPodcastItem = useCallback(
+    ({ item, index }: { item: Podcast; index: number }) => (
+      <TouchableOpacity
+        style={styles.favoriteItem}
+        onPress={() => playPodcast(item)}
+        activeOpacity={0.7}
+      >
+        <View
+          style={[
+            styles.favoriteImageContainer,
+            {
+              backgroundColor:
+                index % 4 === 0
+                  ? '#111'
+                  : index % 4 === 1
+                  ? '#0a547a'
+                  : index % 4 === 2
+                  ? '#6d3030'
+                  : '#3a5834'
+            }
+          ]}
+        >
+          {typeof item.image === 'string' ? (
+            <Image
+              source={{ uri: item.image }}
+              style={styles.favoriteImage}
+              defaultSource={require('../../assets/images/icon.png')}
+            />
+          ) : (
+            <Image source={item.image} style={styles.favoriteImage} />
+          )}
+        </View>
+        <View style={styles.favoriteInfo}>
+          <Text style={styles.favoriteTitle} numberOfLines={1}>
+            {item.title}
+          </Text>
+          <Text style={styles.favoriteMeta} numberOfLines={1}>
+            {item.creator} • {item.episode}
+          </Text>
+          <Text style={styles.favoriteDate}>Added {item.releaseDate}</Text>
+        </View>
+        <View style={styles.favoriteActions}>
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation()
+              toggleFavorite(item)
+            }}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+          >
+            <Ionicons name="heart" size={18} color="#ef4444" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.downloadButton}
+            onPress={(e) => {
+              e.stopPropagation()
+              downloadPodcast(item)
+            }}
+            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+          >
+            <Ionicons
+              name={
+                isDownloaded(item.id) ? 'checkmark-circle' : 'download-outline'
+              }
+              size={18}
+              color={isDownloaded(item.id) ? '#10b981' : '#9ca3af'}
+            />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    ),
+    [playPodcast, toggleFavorite, isDownloaded, downloadPodcast]
+  )
+
+  const renderLoadMoreButton = useCallback(() => {
+    if (!hasMorePages) return null
+
+    return (
+      <TouchableOpacity
+        style={styles.loadMoreButton}
+        onPress={handleLoadMore}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <ActivityIndicator size="small" color="white" />
+        ) : (
+          <>
+            <Text style={styles.loadMoreText}>Load More</Text>
+            <Ionicons name="chevron-down" size={16} color="white" />
+          </>
+        )}
+      </TouchableOpacity>
+    )
+  }, [hasMorePages, handleLoadMore, isLoading])
+
+  const renderListFooter = useCallback(() => {
+    if (paginatedFavorites.length > 0) {
+      return (
+        <View style={styles.footerContainer}>
+          <Text style={styles.paginationInfo}>
+            Showing {paginatedFavorites.length} of {favorites.length} podcasts
+          </Text>
+          {renderLoadMoreButton()}
+        </View>
+      )
+    }
+
+    return null
+  }, [paginatedFavorites.length, favorites.length, renderLoadMoreButton])
+
+  const renderEmptyList = useCallback(
+    () => (
+      <View style={styles.emptyContainer}>
+        <Ionicons name="heart-outline" size={60} color="#9ca3af" />
+        <Text style={styles.emptyTitle}>No favorites yet</Text>
+        <Text style={styles.emptyMessage}>
+          Start adding podcasts to your favorites to see them here
+        </Text>
+      </View>
+    ),
+    []
+  )
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -33,90 +189,27 @@ export default function FavoritesScreen(): JSX.Element {
         </View>
 
         <View style={styles.headerActions}>
-          <View style={styles.filterButton}>
-            <Text style={styles.filterText}>Recent</Text>
-            <Ionicons name="chevron-down" size={16} color="#9ca3af" />
-          </View>
           <Text style={styles.episodeCount}>{favorites.length} Podcasts</Text>
         </View>
       </View>
 
-      {favorites.length > 0 ? (
-        <ScrollView
-          style={styles.favoritesList}
-          contentContainerStyle={styles.favoritesListContent}
-        >
-          {favorites.map((item: Podcast, index: number) => (
-            <TouchableOpacity
-              key={item.id}
-              style={styles.favoriteItem}
-              onPress={() => playPodcast(item)}
-            >
-              <View
-                style={[
-                  styles.favoriteImageContainer,
-                  {
-                    backgroundColor:
-                      index % 4 === 0
-                        ? '#111'
-                        : index % 4 === 1
-                        ? '#0a547a'
-                        : index % 4 === 2
-                        ? '#6d3030'
-                        : '#3a5834'
-                  }
-                ]}
-              >
-                <Image source={item.image} style={styles.favoriteImage} />
-              </View>
-              <View style={styles.favoriteInfo}>
-                <Text style={styles.favoriteTitle}>{item.title}</Text>
-                <Text style={styles.favoriteMeta}>
-                  {item.creator} • {item.episode}
-                </Text>
-                <Text style={styles.favoriteDate}>
-                  Added {item.releaseDate}
-                </Text>
-              </View>
-              <View style={styles.favoriteActions}>
-                <TouchableOpacity
-                  onPress={(e) => {
-                    e.stopPropagation()
-                    toggleFavorite(item)
-                  }}
-                >
-                  <Ionicons name="heart" size={18} color="#ef4444" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.playButton}
-                  onPress={(e) => {
-                    e.stopPropagation()
-                    downloadPodcast(item)
-                  }}
-                >
-                  <Ionicons
-                    name={
-                      isDownloaded(item.id)
-                        ? 'checkmark-circle'
-                        : 'download-outline'
-                    }
-                    size={18}
-                    color={isDownloaded(item.id) ? '#10b981' : '#9ca3af'}
-                  />
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      ) : (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="heart-outline" size={60} color="#9ca3af" />
-          <Text style={styles.emptyTitle}>No favorites yet</Text>
-          <Text style={styles.emptyMessage}>
-            Start adding podcasts to your favorites to see them here
-          </Text>
-        </View>
-      )}
+      <FlatList
+        data={paginatedFavorites}
+        renderItem={renderPodcastItem}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={[
+          styles.favoritesListContent,
+          paginatedFavorites.length === 0 && styles.emptyListContainer
+        ]}
+        ListEmptyComponent={renderEmptyList}
+        ListFooterComponent={renderListFooter}
+        removeClippedSubviews={Platform.OS === 'android'}
+        maxToRenderPerBatch={10}
+        windowSize={10}
+      />
+
+      <MiniPlayer />
+      <NowPlaying />
     </SafeAreaView>
   )
 }
@@ -167,8 +260,10 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontWeight: '500'
   },
-  favoritesList: {
-    flex: 1
+  emptyListContainer: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   favoritesListContent: {
     paddingHorizontal: 16,
@@ -178,8 +273,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 12,
-    paddingVertical: 8,
-    borderRadius: 8
+    paddingVertical: 8
   },
   favoriteImageContainer: {
     width: 64,
@@ -191,12 +285,13 @@ const styles = StyleSheet.create({
     alignItems: 'center'
   },
   favoriteImage: {
-    width: 64,
-    height: 64,
+    width: '100%',
+    height: '100%',
     borderRadius: 8
   },
   favoriteInfo: {
-    flex: 1
+    flex: 1,
+    marginRight: 8
   },
   favoriteTitle: {
     fontSize: 14,
@@ -215,15 +310,15 @@ const styles = StyleSheet.create({
   },
   favoriteActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    alignItems: 'center'
   },
-  playButton: {
+  downloadButton: {
     marginLeft: 12
   },
   emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 40
   },
   emptyTitle: {
@@ -238,5 +333,28 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     textAlign: 'center',
     lineHeight: 20
+  },
+  footerContainer: {
+    alignItems: 'center',
+    paddingVertical: 16
+  },
+  paginationInfo: {
+    color: '#9ca3af',
+    fontSize: 12,
+    marginBottom: 8
+  },
+  loadMoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    justifyContent: 'center'
+  },
+  loadMoreText: {
+    color: 'white',
+    fontWeight: '500',
+    marginRight: 4
   }
 })

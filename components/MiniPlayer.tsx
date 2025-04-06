@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
-  Platform
+  Platform,
+  ActivityIndicator,
+  GestureResponderEvent
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { usePodcast } from '../context/PodcastContext'
@@ -25,8 +27,12 @@ const MiniPlayer: React.FC = () => {
     playbackPosition,
     playbackDuration,
     isBuffering,
-    formatTime
+    formatTime,
+    isConnected
   } = usePodcast()
+
+  // Local state to handle button press animation
+  const [isPressed, setIsPressed] = useState<boolean>(false)
 
   const progressPercentage = useMemo(() => {
     if (!playbackDuration || playbackDuration <= 0) return 0
@@ -43,7 +49,7 @@ const MiniPlayer: React.FC = () => {
 
   if (!currentPodcast || !showMiniPlayer) return null
 
-  const renderImage = () => {
+  const renderImage = (): React.ReactNode => {
     if (typeof currentPodcast.image === 'string') {
       return (
         <Image
@@ -55,6 +61,17 @@ const MiniPlayer: React.FC = () => {
     } else {
       return <Image source={currentPodcast.image} style={styles.image} />
     }
+  }
+
+  // Handle play/pause button press with feedback
+  const handlePlayPause = (e: GestureResponderEvent): void => {
+    e.stopPropagation()
+
+    // Visual feedback on button press
+    setIsPressed(true)
+    setTimeout(() => setIsPressed(false), 150)
+
+    togglePlayback()
   }
 
   return (
@@ -84,28 +101,32 @@ const MiniPlayer: React.FC = () => {
               ? 'Buffering...'
               : `${formatTime(playbackPosition)} / ${duration}`}
           </Text>
+          {!isConnected && (
+            <Text style={styles.offlineIndicator}>Offline Mode</Text>
+          )}
         </View>
 
         <View style={styles.controls}>
           <TouchableOpacity
-            style={styles.controlButton}
-            onPress={(e) => {
-              e.stopPropagation()
-              togglePlayback()
-            }}
+            style={[styles.controlButton, isPressed && styles.buttonPressed]}
+            onPress={handlePlayPause}
             disabled={isBuffering}
             hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
           >
-            <Ionicons
-              name={isPlaying ? 'pause' : 'play'}
-              size={24}
-              color={isBuffering ? '#666' : 'white'}
-            />
+            {isBuffering ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Ionicons
+                name={isPlaying ? 'pause' : 'play'}
+                size={24}
+                color="white"
+              />
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
             style={styles.controlButton}
-            onPress={(e) => {
+            onPress={(e: GestureResponderEvent) => {
               e.stopPropagation()
               skipForward(30)
             }}
@@ -180,12 +201,25 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     fontSize: 12
   },
+  offlineIndicator: {
+    color: '#f97316',
+    fontSize: 10,
+    marginTop: 2
+  },
   controls: {
     flexDirection: 'row'
   },
   controlButton: {
     marginLeft: 16,
-    padding: 4
+    padding: 4,
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 16
+  },
+  buttonPressed: {
+    backgroundColor: 'rgba(255,255,255,0.2)'
   }
 })
 

@@ -9,10 +9,11 @@ import {
   Animated,
   SafeAreaView,
   Platform,
-  PanResponder
+  ScrollView,
+  ActivityIndicator
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { usePodcast } from '../context/PodcastContext'
+import { usePodcast } from '@/context/PodcastContext'
 import { BlurView } from 'expo-blur'
 import Slider from '@react-native-community/slider'
 
@@ -36,15 +37,21 @@ const NowPlaying: React.FC = () => {
     skipBackward,
     formatTime,
     changePlaybackRate,
-    playbackRate
+    playbackRate,
+    soundObject,
+    isConnected
   } = usePodcast()
 
   const [sliderValue, setSliderValue] = useState<number>(0)
   const [isDragging, setIsDragging] = useState<boolean>(false)
   const [playbackRates] = useState<number[]>([0.75, 1.0, 1.25, 1.5, 1.75, 2.0])
   const [showRates, setShowRates] = useState<boolean>(false)
+  const [isShuffleEnabled, setIsShuffleEnabled] = useState<boolean>(false)
+  const [isLoopEnabled, setIsLoopEnabled] = useState<boolean>(false)
+  const [isPressedPlay, setIsPressedPlay] = useState<boolean>(false)
 
   const slideAnim = useRef(new Animated.Value(height)).current
+  const scrollViewRef = useRef<ScrollView>(null)
 
   const duration = useMemo(() => {
     if (playbackDuration > 0) {
@@ -59,46 +66,18 @@ const NowPlaying: React.FC = () => {
     }
   }, [playbackPosition, playbackDuration, isDragging])
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (evt, gestureState) => {
-        return (
-          gestureState.dy > 10 &&
-          Math.abs(gestureState.dx) < Math.abs(gestureState.dy)
-        )
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        if (gestureState.dy > 0) {
-          slideAnim.setValue(gestureState.dy)
-        }
-      },
-      onPanResponderRelease: (evt, gestureState) => {
-        if (gestureState.dy > 120 || gestureState.vy > 0.7) {
-          setShowFullPlayer(false)
-        } else {
-          Animated.spring(slideAnim, {
-            toValue: 0,
-            useNativeDriver: true,
-            friction: 8,
-            tension: 40
-          }).start()
-        }
-      }
-    })
-  ).current
-
   useEffect(() => {
     if (showFullPlayer) {
       Animated.spring(slideAnim, {
         toValue: 0,
         useNativeDriver: true,
-        friction: 8
+        friction: 10,
+        tension: 60
       }).start()
     } else {
       Animated.timing(slideAnim, {
         toValue: height,
-        duration: 300,
+        duration: 250,
         useNativeDriver: true
       }).start()
     }
@@ -108,20 +87,20 @@ const NowPlaying: React.FC = () => {
 
   const favorited = isFavorite(currentPodcast.id)
 
-  const onSliderValueChange = (value: number) => {
+  const onSliderValueChange = (value: number): void => {
     setSliderValue(value)
   }
 
-  const onSliderSlidingStart = () => {
+  const onSliderSlidingStart = (): void => {
     setIsDragging(true)
   }
 
-  const onSliderSlidingComplete = async (value: number) => {
+  const onSliderSlidingComplete = async (value: number): Promise<void> => {
     setIsDragging(false)
     await seekTo(value)
   }
 
-  const renderImage = () => {
+  const renderImage = (): React.ReactNode => {
     if (typeof currentPodcast.image === 'string') {
       return (
         <Image
@@ -133,6 +112,29 @@ const NowPlaying: React.FC = () => {
     } else {
       return <Image source={currentPodcast.image} style={styles.image} />
     }
+  }
+
+  const toggleShuffle = (): void => {
+    setIsShuffleEnabled(!isShuffleEnabled)
+  }
+
+  const toggleLoop = async (): Promise<void> => {
+    const newLoopState = !isLoopEnabled
+    setIsLoopEnabled(newLoopState)
+
+    if (soundObject) {
+      try {
+        await soundObject.setIsLoopingAsync(newLoopState)
+      } catch (error) {
+        console.error('Error setting loop state:', error)
+      }
+    }
+  }
+
+  const handlePlayPress = (): void => {
+    setIsPressedPlay(true)
+    setTimeout(() => setIsPressedPlay(false), 150)
+    togglePlayback()
   }
 
   return (
@@ -148,7 +150,7 @@ const NowPlaying: React.FC = () => {
       <BlurView intensity={90} style={StyleSheet.absoluteFill} tint="dark" />
 
       <SafeAreaView style={styles.container}>
-        <View style={styles.header} {...panResponder.panHandlers}>
+        <View style={styles.header}>
           <TouchableOpacity
             style={styles.headerButton}
             onPress={toggleFullPlayer}
@@ -167,6 +169,13 @@ const NowPlaying: React.FC = () => {
             <Ionicons name="options-outline" size={24} color="white" />
           </TouchableOpacity>
         </View>
+
+        {!isConnected && (
+          <View style={styles.offlineBanner}>
+            <Ionicons name="cloud-offline-outline" size={16} color="#f97316" />
+            <Text style={styles.offlineText}>Offline Mode</Text>
+          </View>
+        )}
 
         {showRates && (
           <View style={styles.ratesContainer}>
@@ -195,159 +204,197 @@ const NowPlaying: React.FC = () => {
           </View>
         )}
 
-        <View style={styles.content}>
-          <View style={styles.imageContainer}>
-            {renderImage()}
-            {isBuffering && (
-              <View style={styles.bufferingOverlay}>
-                <Text style={styles.bufferingText}>Buffering...</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.podcastInfo}>
-            <Text style={styles.title} numberOfLines={2}>
-              {currentPodcast.title}
-            </Text>
-            <Text style={styles.creator} numberOfLines={1}>
-              {currentPodcast.creator}
-            </Text>
-          </View>
-
-          <View style={styles.progressContainer}>
-            <Slider
-              style={styles.slider}
-              minimumValue={0}
-              maximumValue={playbackDuration > 0 ? playbackDuration : 1}
-              value={sliderValue}
-              onValueChange={onSliderValueChange}
-              onSlidingStart={onSliderSlidingStart}
-              onSlidingComplete={onSliderSlidingComplete}
-              minimumTrackTintColor="#3b82f6"
-              maximumTrackTintColor="#444"
-              thumbTintColor="#3b82f6"
-              disabled={isBuffering || playbackDuration === 0}
-            />
-
-            <View style={styles.timeInfo}>
-              <Text style={styles.timeText}>
-                {formatTime(isDragging ? sliderValue : playbackPosition)}
-              </Text>
-              <Text style={styles.timeText}>{duration}</Text>
+        <ScrollView
+          ref={scrollViewRef}
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollViewContent}
+          showsVerticalScrollIndicator={false}
+          bounces={true}
+        >
+          <View style={styles.content}>
+            <View style={styles.imageContainer}>
+              {renderImage()}
+              {isBuffering && (
+                <View style={styles.bufferingOverlay}>
+                  <ActivityIndicator size="large" color="#3b82f6" />
+                  <Text style={styles.bufferingText}>Buffering...</Text>
+                </View>
+              )}
             </View>
-          </View>
 
-          <View style={styles.controls}>
-            <TouchableOpacity
-              style={styles.secondaryControl}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons name="shuffle" size={24} color="#9ca3af" />
-            </TouchableOpacity>
+            <View style={styles.podcastInfo}>
+              <Text style={styles.title} numberOfLines={2}>
+                {currentPodcast.title}
+              </Text>
+              <Text style={styles.creator} numberOfLines={1}>
+                {currentPodcast.creator}
+              </Text>
+            </View>
 
-            <TouchableOpacity
-              style={styles.mainControl}
-              onPress={() => skipBackward(30)}
-              disabled={isBuffering}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons
-                name="play-skip-back"
-                size={30}
-                color={isBuffering ? '#666' : 'white'}
+            <View style={styles.progressContainer}>
+              <Slider
+                style={styles.slider}
+                minimumValue={0}
+                maximumValue={playbackDuration > 0 ? playbackDuration : 1}
+                value={sliderValue}
+                onValueChange={onSliderValueChange}
+                onSlidingStart={onSliderSlidingStart}
+                onSlidingComplete={onSliderSlidingComplete}
+                minimumTrackTintColor="#3b82f6"
+                maximumTrackTintColor="#444"
+                thumbTintColor="#3b82f6"
+                disabled={isBuffering || playbackDuration === 0}
               />
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.playButton, isBuffering && { opacity: 0.6 }]}
-              onPress={togglePlayback}
-              disabled={isBuffering}
-            >
-              <View
+              <View style={styles.timeInfo}>
+                <Text style={styles.timeText}>
+                  {formatTime(isDragging ? sliderValue : playbackPosition)}
+                </Text>
+                <Text style={styles.timeText}>{duration}</Text>
+              </View>
+            </View>
+
+            <View style={styles.controls}>
+              <TouchableOpacity
                 style={[
-                  styles.playButtonInner,
-                  { paddingLeft: isPlaying ? 0 : 3 }
+                  styles.secondaryControl,
+                  isShuffleEnabled && styles.activeSecondaryControl
                 ]}
+                onPress={toggleShuffle}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
               >
                 <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={30}
-                  color="black"
+                  name="shuffle"
+                  size={24}
+                  color={isShuffleEnabled ? '#3b82f6' : '#9ca3af'}
                 />
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.mainControl}
-              onPress={() => skipForward(30)}
-              disabled={isBuffering}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons
-                name="play-skip-forward"
-                size={30}
-                color={isBuffering ? '#666' : 'white'}
-              />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.mainControl}
+                onPress={() => skipBackward(30)}
+                disabled={isBuffering}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons
+                  name="play-skip-back"
+                  size={30}
+                  color={isBuffering ? '#666' : 'white'}
+                />
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.secondaryControl}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons name="repeat" size={24} color="#9ca3af" />
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.playButton,
+                  isBuffering && { opacity: 0.6 },
+                  isPressedPlay && styles.playButtonPressed
+                ]}
+                onPress={handlePlayPress}
+                disabled={isBuffering}
+                activeOpacity={0.7}
+              >
+                <View
+                  style={[
+                    styles.playButtonInner,
+                    { paddingLeft: isPlaying ? 0 : 3 }
+                  ]}
+                >
+                  {isBuffering ? (
+                    <ActivityIndicator size="small" color="black" />
+                  ) : (
+                    <Ionicons
+                      name={isPlaying ? 'pause' : 'play'}
+                      size={30}
+                      color="black"
+                    />
+                  )}
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.mainControl}
+                onPress={() => skipForward(30)}
+                disabled={isBuffering}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons
+                  name="play-skip-forward"
+                  size={30}
+                  color={isBuffering ? '#666' : 'white'}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.secondaryControl,
+                  isLoopEnabled && styles.activeSecondaryControl
+                ]}
+                onPress={toggleLoop}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons
+                  name="repeat"
+                  size={24}
+                  color={isLoopEnabled ? '#3b82f6' : '#9ca3af'}
+                />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.additionalControls}>
+              <TouchableOpacity
+                style={styles.additionalButton}
+                onPress={() => currentPodcast && toggleFavorite(currentPodcast)}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons
+                  name={favorited ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color={favorited ? '#ef4444' : '#9ca3af'}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.additionalButton}
+                onPress={() =>
+                  changePlaybackRate(
+                    playbackRate >= 2 ? 0.75 : playbackRate + 0.25
+                  )
+                }
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Text style={styles.speedText}>{playbackRate}x</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.additionalButton}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons
+                  name="share-social-outline"
+                  size={24}
+                  color="#9ca3af"
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.additionalButton}
+                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+              >
+                <Ionicons name="list-outline" size={24} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.episode}>
+              <Text style={styles.episodeTitle}>About this episode</Text>
+              <Text style={styles.episodeDescription}>
+                {currentPodcast.description || 'No description available.'}
+              </Text>
+              <Text style={styles.episodeDate}>
+                Released: {currentPodcast.releaseDate}
+              </Text>
+            </View>
           </View>
-
-          <View style={styles.additionalControls}>
-            <TouchableOpacity
-              style={styles.additionalButton}
-              onPress={() => currentPodcast && toggleFavorite(currentPodcast)}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons
-                name={favorited ? 'heart' : 'heart-outline'}
-                size={24}
-                color={favorited ? '#ef4444' : '#9ca3af'}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.additionalButton}
-              onPress={() =>
-                changePlaybackRate(
-                  playbackRate >= 2 ? 0.75 : playbackRate + 0.25
-                )
-              }
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Text style={styles.speedText}>{playbackRate}x</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.additionalButton}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons name="share-social-outline" size={24} color="#9ca3af" />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.additionalButton}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons name="list-outline" size={24} color="#9ca3af" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.episode}>
-            <Text style={styles.episodeTitle}>About this episode</Text>
-            <Text style={styles.episodeDescription}>
-              {currentPodcast.description || 'No description available.'}
-            </Text>
-            <Text style={styles.episodeDate}>
-              Released: {currentPodcast.releaseDate}
-            </Text>
-          </View>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     </Animated.View>
   )
@@ -381,6 +428,12 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 8
+  },
+  scrollView: {
+    flex: 1
+  },
+  scrollViewContent: {
+    paddingBottom: 40
   },
   content: {
     flex: 1,
@@ -419,7 +472,8 @@ const styles = StyleSheet.create({
   bufferingText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: '500'
+    fontWeight: '500',
+    marginTop: 10
   },
   podcastInfo: {
     alignItems: 'center',
@@ -465,6 +519,10 @@ const styles = StyleSheet.create({
   secondaryControl: {
     padding: 8
   },
+  activeSecondaryControl: {
+    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+    borderRadius: 20
+  },
   mainControl: {
     padding: 8
   },
@@ -475,6 +533,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     justifyContent: 'center',
     alignItems: 'center'
+  },
+  playButtonPressed: {
+    backgroundColor: '#e0e0e0',
+    transform: [{ scale: 0.95 }]
   },
   playButtonInner: {
     width: '100%',
@@ -557,6 +619,22 @@ const styles = StyleSheet.create({
   activeRateText: {
     color: 'white',
     fontWeight: '500'
+  },
+  offlineBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(31, 41, 55, 0.9)',
+    paddingVertical: 6,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8
+  },
+  offlineText: {
+    color: '#f97316',
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 6
   }
 })
 

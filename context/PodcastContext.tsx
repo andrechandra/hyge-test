@@ -1,3 +1,4 @@
+// Import NetInfo at the top of your file with other imports
 import React, {
   createContext,
   useState,
@@ -15,6 +16,7 @@ import {
 import { Audio } from 'expo-av'
 import * as FileSystem from 'expo-file-system'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo'
 
 export interface Podcast {
   id: string
@@ -34,6 +36,7 @@ export interface DownloadedPodcast extends Podcast {
   localAudioPath?: string
 }
 
+// Update the PodcastContextType interface to include isConnected
 interface PodcastContextType {
   podcasts: Podcast[]
   currentPodcast: Podcast | null
@@ -42,6 +45,8 @@ interface PodcastContextType {
   showFullPlayer: boolean
   favorites: Podcast[]
   downloads: DownloadedPodcast[]
+  // Add isConnected property
+  isConnected: boolean
   // API and loading states
   isLoading: boolean
   hasError: boolean
@@ -113,7 +118,7 @@ const formatDate = (dateString: string): string => {
 }
 
 // Sample data for testing - remove this when connecting to real API
-const generateSamplePodcasts = (page = 1, limit = 10) => {
+const generateSamplePodcasts = (page = 1, limit = 10): Podcast[] => {
   return Array(limit)
     .fill(null)
     .map((_, i) => ({
@@ -145,9 +150,21 @@ interface PodcastProviderProps {
   children: ReactNode
 }
 
+// Custom hook to use the podcast context
+export const usePodcast = (): PodcastContextType => {
+  const context = useContext(PodcastContext)
+  if (context === undefined) {
+    throw new Error('usePodcast must be used within a PodcastProvider')
+  }
+  return context
+}
+
 export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   children
 }) => {
+  // Add state for network connectivity
+  const [isConnected, setIsConnected] = useState<boolean>(true)
+
   // API and data state
   const [podcasts, setPodcasts] = useState<Podcast[]>([])
   const [isLoading, setIsLoading] = useState<boolean>(true)
@@ -172,12 +189,12 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
 
   // Refs
   const playbackUpdateInterval = useRef<NodeJS.Timeout | null>(null)
-  const appStateRef = useRef(AppState.currentState)
-  const isMounted = useRef(true)
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState)
+  const isMounted = useRef<boolean>(true)
 
-  // Initialize audio and load saved data
+  // Initialize audio, load saved data, and set up network listener
   useEffect(() => {
-    const init = async () => {
+    const init = async (): Promise<void> => {
       try {
         await setupAudio()
         await loadSavedData()
@@ -206,7 +223,21 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
 
     init()
 
-    init()
+    // Set up network connectivity listener
+    const unsubscribeNetInfo = NetInfo.addEventListener(
+      (state: NetInfoState) => {
+        if (isMounted.current) {
+          setIsConnected(state.isConnected ?? false)
+
+          // If connection was lost and regained, we might want to refresh data
+          if (state.isConnected && !isConnected) {
+            refreshPodcasts().catch((error) =>
+              console.error('Error refreshing after reconnection:', error)
+            )
+          }
+        }
+      }
+    )
 
     // Handle app state changes
     const subscription = AppState.addEventListener(
@@ -224,11 +255,12 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
 
       unloadSound()
       subscription.remove()
+      unsubscribeNetInfo() // Clean up NetInfo listener
     }
-  }, [])
+  }, [isConnected])
 
   // Load saved data (favorites, downloads, current podcast)
-  const loadSavedData = async () => {
+  const loadSavedData = async (): Promise<void> => {
     try {
       // Load favorites
       const storedFavorites = await AsyncStorage.getItem(STORAGE_KEYS.FAVORITES)
@@ -265,7 +297,10 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Fetch podcasts from Simplecast API
-  const fetchPodcasts = async (pageNumber: number, isRefresh = false) => {
+  const fetchPodcasts = async (
+    pageNumber: number,
+    isRefresh = false
+  ): Promise<void> => {
     if ((isLoading && !isRefresh) || (!hasMorePages && !isRefresh)) return
 
     try {
@@ -349,22 +384,23 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Load more podcasts function for pagination
-  const loadMore = () => {
+  const loadMore = (): void => {
     if (!isLoading && hasMorePages) {
       fetchPodcasts(page + 1)
     }
   }
 
   // Refresh podcasts function
-  const refreshPodcasts = async () => {
+  const refreshPodcasts = async (): Promise<void> => {
     return fetchPodcasts(1, true)
   }
 
   // Setup Audio
-  const setupAudio = async () => {
+  const setupAudio = async (): Promise<void> => {
     try {
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
+        // Use numerical values instead of enum constants
         interruptionModeIOS: 1, // INTERRUPTION_MODE_IOS_DO_NOT_MIX
         playsInSilentModeIOS: true,
         interruptionModeAndroid: 1, // INTERRUPTION_MODE_ANDROID_DO_NOT_MIX
@@ -379,7 +415,9 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // App state change handler
-  const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+  const handleAppStateChange = async (
+    nextAppState: AppStateStatus
+  ): Promise<void> => {
     if (
       appStateRef.current === 'active' &&
       nextAppState.match(/inactive|background/)
@@ -392,7 +430,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Load previous session
-  const loadPreviousSession = async () => {
+  const loadPreviousSession = async (): Promise<void> => {
     try {
       await loadSavedData()
     } catch (error) {
@@ -401,7 +439,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Save current session
-  const saveCurrentSession = async () => {
+  const saveCurrentSession = async (): Promise<void> => {
     try {
       if (currentPodcast) {
         await AsyncStorage.setItem(
@@ -432,7 +470,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Unload sound
-  const unloadSound = async () => {
+  const unloadSound = async (): Promise<void> => {
     if (soundObject) {
       try {
         const status = await soundObject.getStatusAsync()
@@ -448,7 +486,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Start playback updates
-  const startPlaybackUpdates = () => {
+  const startPlaybackUpdates = (): void => {
     if (playbackUpdateInterval.current) {
       clearInterval(playbackUpdateInterval.current)
     }
@@ -469,7 +507,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Stop playback updates
-  const stopPlaybackUpdates = () => {
+  const stopPlaybackUpdates = (): void => {
     if (playbackUpdateInterval.current) {
       clearInterval(playbackUpdateInterval.current)
       playbackUpdateInterval.current = null
@@ -477,7 +515,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   }
 
   // Playback status update handler
-  const onPlaybackStatusUpdate = (status: any) => {
+  const onPlaybackStatusUpdate = (status: any): void => {
     if (!status.isLoaded) {
       if (status.error) {
         console.error(`Audio playback error: ${status.error}`)
@@ -501,7 +539,38 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     }
   }
 
-  // Play podcast
+  // Improved togglePlayback function
+  const togglePlayback = async (): Promise<void> => {
+    if (!soundObject) {
+      if (currentPodcast) {
+        await playPodcast(currentPodcast)
+      }
+      return
+    }
+
+    try {
+      const status = await soundObject.getStatusAsync()
+
+      if (!status.isLoaded) {
+        console.error('Sound object not loaded')
+        return
+      }
+
+      if (status.isPlaying) {
+        setIsPlaying(false) // Update state immediately for UI responsiveness
+        await soundObject.pauseAsync()
+        stopPlaybackUpdates()
+      } else {
+        setIsPlaying(true) // Update state immediately for UI responsiveness
+        await soundObject.playAsync()
+        startPlaybackUpdates()
+      }
+    } catch (error) {
+      console.error('Error toggling playback:', error)
+    }
+  }
+
+  // Updated playPodcast function to check connectivity
   const playPodcast = async (podcast: Podcast): Promise<void> => {
     try {
       await unloadSound()
@@ -521,8 +590,16 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         )
         source = { uri: downloadedPodcast.localAudioPath }
       }
-      // Then handle remote URLs
+      // Then handle remote URLs, but check connectivity first
       else if (podcast.audioUrl && podcast.audioUrl.startsWith('http')) {
+        if (!isConnected) {
+          setIsBuffering(false)
+          alert(
+            "No internet connection. Please try again when you're online or play a downloaded podcast."
+          )
+          return
+        }
+
         console.log('Playing from remote URL:', podcast.audioUrl)
         source = { uri: podcast.audioUrl }
       }
@@ -548,12 +625,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         )
 
         setSoundObject(sound)
-        setIsPlaying(true)
+        setIsPlaying(true) // Set playing state when sound is loaded
         startPlaybackUpdates()
       } catch (audioError) {
         console.error('Audio loading error:', audioError)
         setIsBuffering(false)
         setShowMiniPlayer(false)
+        setIsPlaying(false) // Ensure playing state is reset on error
 
         // Show a more user-friendly error
         if (Platform.OS === 'web') {
@@ -570,35 +648,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       console.error('Error playing podcast:', error)
       setIsBuffering(false)
       setShowMiniPlayer(false)
-    }
-  }
-
-  // Toggle playback
-  const togglePlayback = async (): Promise<void> => {
-    if (!soundObject) {
-      if (currentPodcast) {
-        await playPodcast(currentPodcast)
-      }
-      return
-    }
-
-    try {
-      const status = await soundObject.getStatusAsync()
-
-      if (!status.isLoaded) {
-        console.error('Sound object not loaded')
-        return
-      }
-
-      if (status.isPlaying) {
-        await soundObject.pauseAsync()
-        stopPlaybackUpdates()
-      } else {
-        await soundObject.playAsync()
-        startPlaybackUpdates()
-      }
-    } catch (error) {
-      console.error('Error toggling playback:', error)
+      setIsPlaying(false) // Ensure playing state is reset on error
     }
   }
 
@@ -800,6 +850,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     )
   }
 
+  // Add isConnected to the provider value
   return (
     <PodcastContext.Provider
       value={{
@@ -810,6 +861,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         showFullPlayer,
         favorites,
         downloads,
+        isConnected, // Add this to the context
         // API and loading states
         isLoading,
         hasError,
@@ -844,12 +896,4 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       {children}
     </PodcastContext.Provider>
   )
-}
-
-export const usePodcast = (): PodcastContextType => {
-  const context = useContext(PodcastContext)
-  if (context === undefined) {
-    throw new Error('usePodcast must be used within a PodcastProvider')
-  }
-  return context
 }
