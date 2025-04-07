@@ -116,7 +116,7 @@ const STORAGE_KEYS = {
 // SimipleCast API Configuration
 const API_BASE_URL = 'https://api.simplecast.com'
 const PODCAST_ID = '2de31959-5831-476e-8c89-02a2a32885ef'
-const EPISODES_PER_PAGE = 20 // Using larger page size to reduce API calls
+const EPISODES_PER_PAGE = 100 // Using larger page size to reduce API calls
 
 // Helper function for formatting duration
 const formatDuration = (seconds: number): string => {
