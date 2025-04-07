@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { usePodcast, Podcast } from '@/context/PodcastContext'
 import MiniPlayer from '@/components/MiniPlayer'
 import NowPlaying from '@/components/NowPlaying'
+import DownloadButton from '@/components/DownloadButton'
 
 const PODCASTS_PER_PAGE = 10
 
@@ -107,22 +108,7 @@ export default function FavoritesScreen(): JSX.Element {
           >
             <Ionicons name="heart" size={18} color="#ef4444" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.downloadButton}
-            onPress={(e) => {
-              e.stopPropagation()
-              downloadPodcast(item)
-            }}
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          >
-            <Ionicons
-              name={
-                isDownloaded(item.id) ? 'checkmark-circle' : 'download-outline'
-              }
-              size={18}
-              color={isDownloaded(item.id) ? '#10b981' : '#9ca3af'}
-            />
-          </TouchableOpacity>
+          <DownloadButton podcast={item} style={styles.downloadButton} />
         </View>
       </TouchableOpacity>
     ),

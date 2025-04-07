@@ -31,7 +31,6 @@ const MiniPlayer: React.FC = () => {
     isConnected
   } = usePodcast()
 
-  // Local state to handle button press animation
   const [isPressed, setIsPressed] = useState<boolean>(false)
 
   const progressPercentage = useMemo(() => {
@@ -63,11 +62,8 @@ const MiniPlayer: React.FC = () => {
     }
   }
 
-  // Handle play/pause button press with feedback
   const handlePlayPause = (e: GestureResponderEvent): void => {
     e.stopPropagation()
-
-    // Visual feedback on button press
     setIsPressed(true)
     setTimeout(() => setIsPressed(false), 150)
 

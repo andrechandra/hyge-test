@@ -18,6 +18,7 @@ import { usePodcast, Podcast } from '@/context/PodcastContext'
 import MiniPlayer from '@/components/MiniPlayer'
 import NowPlaying from '@/components/NowPlaying'
 import DownloadButton from '@/components/DownloadButton'
+import NotificationCenter from '@/components/NotificationCenter'
 
 const PODCASTS_PER_PAGE = 10
 
@@ -266,7 +267,8 @@ export default function HomeScreen(): JSX.Element {
             <Text style={styles.userName}>Andre Chandra</Text>
           </View>
         </View>
-        <Ionicons name="notifications-outline" size={20} color="#9ca3af" />
+        {/* Replace the existing notifications icon with NotificationCenter component */}
+        <NotificationCenter />
       </View>
 
       <View style={styles.headingContainer}>

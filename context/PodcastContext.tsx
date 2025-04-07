@@ -1,11 +1,11 @@
-// Import NetInfo at the top of your file with other imports
 import React, {
   createContext,
   useState,
   useContext,
   ReactNode,
   useEffect,
-  useRef
+  useRef,
+  useMemo
 } from 'react'
 import {
   ImageSourcePropType,
@@ -17,6 +17,11 @@ import { Audio } from 'expo-av'
 import * as FileSystem from 'expo-file-system'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo'
+import {
+  sendDownloadCompleteNotification,
+  sendDownloadErrorNotification,
+  registerForPushNotificationsAsync
+} from '@/utils/notifications'
 
 export interface Podcast {
   id: string
@@ -36,6 +41,15 @@ export interface DownloadedPodcast extends Podcast {
   localAudioPath?: string
 }
 
+export interface Notification {
+  id: string
+  message: string
+  type: 'success' | 'error' | 'info'
+  timestamp: number
+  read: boolean
+  relatedPodcastId?: string
+}
+
 // Update the PodcastContextType interface to include isConnected
 interface PodcastContextType {
   podcasts: Podcast[]
@@ -45,6 +59,15 @@ interface PodcastContextType {
   showFullPlayer: boolean
   favorites: Podcast[]
   downloads: DownloadedPodcast[]
+  // Notifications
+  notifications: Notification[]
+  unreadNotificationsCount: number
+  addNotification: (
+    notification: Omit<Notification, 'id' | 'timestamp' | 'read'>
+  ) => void
+  markNotificationAsRead: (notificationId: string) => void
+  markAllNotificationsAsRead: () => void
+  clearNotifications: () => void
   // Add isConnected property
   isConnected: boolean
   // API and loading states
@@ -85,7 +108,8 @@ const STORAGE_KEYS = {
   CURRENT_PODCAST: '@podcast_app/current_podcast',
   PLAYBACK_POSITION: '@podcast_app/playback_position',
   FAVORITES: '@podcast_app/favorites',
-  DOWNLOADS: '@podcast_app/downloads'
+  DOWNLOADS: '@podcast_app/downloads',
+  NOTIFICATIONS: '@podcast_app/notifications' // New key
 }
 
 // SimipleCast API Configuration
@@ -180,6 +204,14 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   const [favorites, setFavorites] = useState<Podcast[]>([])
   const [downloads, setDownloads] = useState<DownloadedPodcast[]>([])
 
+  // Add new state for notifications
+  const [notifications, setNotifications] = useState<Notification[]>([])
+
+  // Computed property for unread notifications count
+  const unreadNotificationsCount = useMemo(() => {
+    return notifications.filter((notification) => !notification.read).length
+  }, [notifications])
+
   // Audio state
   const [soundObject, setSoundObject] = useState<Audio.Sound | null>(null)
   const [playbackPosition, setPlaybackPosition] = useState<number>(0)
@@ -198,6 +230,9 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       try {
         await setupAudio()
         await loadSavedData()
+
+        // Register for push notifications
+        await registerForPushNotificationsAsync()
 
         // Try to connect to the real API
         try {
@@ -294,6 +329,14 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         if (storedPosition) {
           setPlaybackPosition(parseInt(storedPosition, 10))
         }
+      }
+
+      // Load notifications
+      const storedNotifications = await AsyncStorage.getItem(
+        STORAGE_KEYS.NOTIFICATIONS
+      )
+      if (storedNotifications) {
+        setNotifications(JSON.parse(storedNotifications))
       }
     } catch (error) {
       console.error('Error loading saved data:', error)
@@ -468,8 +511,115 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         STORAGE_KEYS.DOWNLOADS,
         JSON.stringify(downloads)
       )
+
+      // Save notifications
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.NOTIFICATIONS,
+        JSON.stringify(notifications)
+      )
     } catch (error) {
       console.error('Error saving session:', error)
+    }
+  }
+
+  // Add notification function
+  const addNotification = (
+    notification: Omit<Notification, 'id' | 'timestamp' | 'read'>
+  ): void => {
+    const newNotification: Notification = {
+      ...notification,
+      id: Date.now().toString(),
+      timestamp: Date.now(),
+      read: false
+    }
+
+    setNotifications((currentNotifications) => {
+      const updatedNotifications = [
+        newNotification,
+        ...currentNotifications.slice(0, 19)
+      ] // Keep last 20 notifications
+
+      // Save to storage
+      AsyncStorage.setItem(
+        STORAGE_KEYS.NOTIFICATIONS,
+        JSON.stringify(updatedNotifications)
+      ).catch((err) => console.error('Error saving notifications:', err))
+
+      return updatedNotifications
+    })
+
+    // Also send a device notification if the app is in background
+    if (notification.relatedPodcastId) {
+      const relatedPodcast = podcasts.find(
+        (p) => p.id === notification.relatedPodcastId
+      )
+      if (relatedPodcast) {
+        sendDeviceNotification(
+          notification.message,
+          notification.type,
+          relatedPodcast
+        )
+      }
+    }
+  }
+
+  // Mark notification as read
+  const markNotificationAsRead = (notificationId: string): void => {
+    setNotifications((currentNotifications) => {
+      const updatedNotifications = currentNotifications.map((notif) =>
+        notif.id === notificationId ? { ...notif, read: true } : notif
+      )
+
+      // Save to storage
+      AsyncStorage.setItem(
+        STORAGE_KEYS.NOTIFICATIONS,
+        JSON.stringify(updatedNotifications)
+      ).catch((err) => console.error('Error saving notifications:', err))
+
+      return updatedNotifications
+    })
+  }
+
+  // Mark all notifications as read
+  const markAllNotificationsAsRead = (): void => {
+    setNotifications((currentNotifications) => {
+      const updatedNotifications = currentNotifications.map((notif) => ({
+        ...notif,
+        read: true
+      }))
+
+      // Save to storage
+      AsyncStorage.setItem(
+        STORAGE_KEYS.NOTIFICATIONS,
+        JSON.stringify(updatedNotifications)
+      ).catch((err) => console.error('Error saving notifications:', err))
+
+      return updatedNotifications
+    })
+  }
+
+  // Clear all notifications
+  const clearNotifications = (): void => {
+    setNotifications([])
+
+    // Save to storage
+    AsyncStorage.setItem(STORAGE_KEYS.NOTIFICATIONS, JSON.stringify([])).catch(
+      (err) => console.error('Error saving notifications:', err)
+    )
+  }
+
+  // Send device notification
+  const sendDeviceNotification = async (
+    message: string,
+    type: 'success' | 'error' | 'info',
+    podcast?: Podcast
+  ): Promise<void> => {
+    if (AppState.currentState !== 'active' && podcast) {
+      if (type === 'success') {
+        await sendDownloadCompleteNotification(podcast.title, podcast.id)
+      } else if (type === 'error') {
+        await sendDownloadErrorNotification(podcast.title, podcast.id)
+      }
     }
   }
 
@@ -643,8 +793,22 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
           alert(
             'No internet connection available. Please download this podcast to play offline.'
           )
+
+          // Add notification
+          addNotification({
+            message: `Cannot play: No internet connection available for "${podcast.title}"`,
+            type: 'error',
+            relatedPodcastId: podcast.id
+          })
         } else {
           alert('Unable to play podcast: No valid audio source found')
+
+          // Add notification
+          addNotification({
+            message: `Cannot play: No valid audio source found for "${podcast.title}"`,
+            type: 'error',
+            relatedPodcastId: podcast.id
+          })
         }
         return
       }
@@ -665,6 +829,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       setIsPlaying(true)
       startPlaybackUpdates()
 
+      // Add notification that playback started
+      addNotification({
+        message: `Now playing: "${podcast.title}"`,
+        type: 'info',
+        relatedPodcastId: podcast.id
+      })
+
       // Save current podcast to storage
       await AsyncStorage.setItem(
         STORAGE_KEYS.CURRENT_PODCAST,
@@ -675,6 +846,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       setIsBuffering(false)
       setShowMiniPlayer(false)
       setIsPlaying(false)
+
+      // Add notification for playback error
+      addNotification({
+        message: `Error playing: "${podcast.title}"`,
+        type: 'error',
+        relatedPodcastId: podcast.id
+      })
 
       // Show a more informative error message
       // if (error instanceof Error) {
@@ -761,8 +939,22 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     let updatedFavorites: Podcast[]
     if (isFavorited) {
       updatedFavorites = favorites.filter((fav) => fav.id !== podcast.id)
+
+      // Add notification that podcast was removed from favorites
+      addNotification({
+        message: `Removed from favorites: "${podcast.title}"`,
+        type: 'info',
+        relatedPodcastId: podcast.id
+      })
     } else {
       updatedFavorites = [...favorites, podcast]
+
+      // Add notification that podcast was added to favorites
+      addNotification({
+        message: `Added to favorites: "${podcast.title}"`,
+        type: 'success',
+        relatedPodcastId: podcast.id
+      })
     }
 
     setFavorites(updatedFavorites)
@@ -783,11 +975,23 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
   const downloadPodcast = async (podcast: Podcast): Promise<void> => {
     if (!isConnected) {
       alert('No internet connection. Please connect to download podcasts.')
+      // Add notification for failed download due to connectivity
+      addNotification({
+        message: `Download failed: No internet connection for "${podcast.title}"`,
+        type: 'error',
+        relatedPodcastId: podcast.id
+      })
       return
     }
 
     if (!podcast.audioUrl) {
       console.error('No audio URL available for download')
+      // Add notification for failed download due to missing URL
+      addNotification({
+        message: `Download failed: No audio URL available for "${podcast.title}"`,
+        type: 'error',
+        relatedPodcastId: podcast.id
+      })
       return
     }
 
@@ -796,8 +1000,21 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       const existingDownload = downloads.find((dl) => dl.id === podcast.id)
       if (existingDownload?.progress === 100) {
         console.log('Podcast already downloaded:', podcast.id)
+        // Notify user that podcast is already downloaded
+        addNotification({
+          message: `"${podcast.title}" is already downloaded`,
+          type: 'info',
+          relatedPodcastId: podcast.id
+        })
         return
       }
+
+      // Add notification that download has started
+      addNotification({
+        message: `Starting download: "${podcast.title}"`,
+        type: 'info',
+        relatedPodcastId: podcast.id
+      })
 
       // Create unique filename
       const fileName = `podcast-${podcast.id}.mp3`
@@ -898,6 +1115,14 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         ).catch((err) => console.error('Error saving completed download:', err))
 
         console.log('Download completed successfully:', podcast.id)
+
+        // Add notification for successful download
+        addNotification({
+          message: `Download complete: "${podcast.title}"`,
+          type: 'success',
+          relatedPodcastId: podcast.id
+        })
+
         return completedDownloads
       })
     } catch (error) {
@@ -914,7 +1139,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         console.error('Error cleaning up file:', cleanupErr)
       }
 
-      // Remove failed download from state
+      // Remove failed download from state and add error notification
       setDownloads((currentDownloads) => {
         const updatedDownloads = currentDownloads.filter(
           (dl) => dl.id !== podcast.id
@@ -927,6 +1152,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         ).catch((err) =>
           console.error('Error saving downloads after failure:', err)
         )
+
+        // Add notification for failed download
+        addNotification({
+          message: `Download failed: "${podcast.title}"`,
+          type: 'error',
+          relatedPodcastId: podcast.id
+        })
 
         return updatedDownloads
       })
@@ -953,6 +1185,17 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     // First find the download to get the file path
     const downloadToRemove = downloads.find((dl) => dl.id === podcastId)
 
+    if (!downloadToRemove) {
+      return
+    }
+
+    // Add notification for download removal
+    addNotification({
+      message: `Removed download: "${downloadToRemove.title}"`,
+      type: 'info',
+      relatedPodcastId: podcastId
+    })
+
     if (downloadToRemove?.localAudioPath) {
       // Delete the file
       FileSystem.deleteAsync(downloadToRemove.localAudioPath, {
@@ -978,7 +1221,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     })
   }
 
-  // Add isConnected to the provider value
+  // Add new notification-related functions to the context value
   return (
     <PodcastContext.Provider
       value={{
@@ -989,7 +1232,13 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         showFullPlayer,
         favorites,
         downloads,
-        isConnected, // Add this to the context
+        notifications,
+        unreadNotificationsCount,
+        addNotification,
+        markNotificationAsRead,
+        markAllNotificationsAsRead,
+        clearNotifications,
+        isConnected,
         // API and loading states
         isLoading,
         hasError,
