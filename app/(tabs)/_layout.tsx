@@ -57,12 +57,6 @@ export default function TabLayout(): JSX.Element {
           }}
         />
         <Tabs.Screen
-          name="explore"
-          options={{
-            href: '/explore'
-          }}
-        />
-        <Tabs.Screen
           name="favorites"
           options={{
             href: '/favorites'
@@ -104,7 +98,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     zIndex: 90,
     paddingBottom: Platform.OS === 'ios' ? 35 : 15
   },

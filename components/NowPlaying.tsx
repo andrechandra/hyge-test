@@ -375,13 +375,6 @@ const NowPlaying: React.FC = () => {
                   color="#9ca3af"
                 />
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.additionalButton}
-                hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-              >
-                <Ionicons name="list-outline" size={24} color="#9ca3af" />
-              </TouchableOpacity>
             </View>
 
             <View style={styles.episode}>

@@ -28,27 +28,32 @@ export default function DownloadsScreen(): JSX.Element {
   const [hasMorePages, setHasMorePages] = useState<boolean>(true)
   const [isLoading, setIsLoading] = useState<boolean>(false)
 
-  // Update paginated downloads based on current page
   useEffect(() => {
+    const sortedDownloads = [...downloads].sort((a, b) => {
+      if (a.progress === 100 && b.progress < 100) return -1
+      if (a.progress < 100 && b.progress === 100) return 1
+
+      const dateA = new Date(a.downloadDate).getTime()
+      const dateB = new Date(b.downloadDate).getTime()
+      return dateB - dateA
+    })
+
     const startIndex = 0
     const endIndex = currentPage * PODCASTS_PER_PAGE
 
-    const downloadsToShow = downloads.slice(startIndex, endIndex)
+    const downloadsToShow = sortedDownloads.slice(startIndex, endIndex)
     setPaginatedDownloads(downloadsToShow)
 
-    // Check if we have more pages
-    setHasMorePages(downloads.length > endIndex)
+    setHasMorePages(sortedDownloads.length > endIndex)
   }, [downloads, currentPage])
 
-  // Load next page of downloads
   const handleLoadMore = useCallback(() => {
     if (!isLoading && hasMorePages) {
       setIsLoading(true)
-      // Simulate loading
       setTimeout(() => {
         setCurrentPage((prevPage) => prevPage + 1)
         setIsLoading(false)
-      }, 500) // Add a small delay to simulate loading
+      }, 500)
     }
   }, [isLoading, hasMorePages])
 
@@ -82,9 +87,13 @@ export default function DownloadsScreen(): JSX.Element {
           ) : (
             <Image source={item.image} style={styles.downloadImage} />
           )}
-          {item.progress < 100 && (
+          {item.progress < 100 ? (
             <View style={styles.progressIndicator}>
               <Text style={styles.progressText}>{item.progress}%</Text>
+            </View>
+          ) : (
+            <View style={styles.downloadedIndicator}>
+              <Ionicons name="checkmark-circle" size={12} color="#10b981" />
             </View>
           )}
         </View>
@@ -96,7 +105,10 @@ export default function DownloadsScreen(): JSX.Element {
             {item.creator} • {item.episode}
           </Text>
           <View style={styles.downloadDetails}>
-            <Text style={styles.downloadDate}>{item.downloadDate}</Text>
+            <Text style={styles.downloadDate}>
+              {item.progress < 100 ? 'Downloading... ' : 'Downloaded: '}
+              {item.downloadDate}
+            </Text>
           </View>
         </View>
         <TouchableOpacity
@@ -107,7 +119,13 @@ export default function DownloadsScreen(): JSX.Element {
           }}
           hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
         >
-          <Ionicons name="trash-outline" size={18} color="#9ca3af" />
+          <Ionicons
+            name={
+              item.progress === 100 ? 'trash-outline' : 'close-circle-outline'
+            }
+            size={18}
+            color="#9ca3af"
+          />
         </TouchableOpacity>
       </TouchableOpacity>
     ),
@@ -349,5 +367,13 @@ const styles = StyleSheet.create({
     color: 'white',
     fontWeight: '500',
     marginRight: 4
+  },
+  downloadedIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 10,
+    padding: 2
   }
 })

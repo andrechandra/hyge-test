@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { usePodcast, Podcast } from '@/context/PodcastContext'
 import MiniPlayer from '@/components/MiniPlayer'
 import NowPlaying from '@/components/NowPlaying'
+import DownloadButton from '@/components/DownloadButton'
 
 const PODCASTS_PER_PAGE = 10
 
@@ -41,7 +42,6 @@ export default function HomeScreen(): JSX.Element {
   const [paginatedPodcasts, setPaginatedPodcasts] = useState<Podcast[]>([])
   const [hasMorePages, setHasMorePages] = useState<boolean>(true)
 
-  // Filter podcasts based on search term
   useEffect(() => {
     if (searchTerm.trim() === '') {
       setFilteredPodcasts(podcasts)
@@ -53,11 +53,9 @@ export default function HomeScreen(): JSX.Element {
       )
       setFilteredPodcasts(filtered)
     }
-    // Reset pagination when search term changes
     setCurrentPage(1)
   }, [searchTerm, podcasts])
 
-  // Update paginated podcasts based on current page
   useEffect(() => {
     const startIndex = 0
     const endIndex = currentPage * PODCASTS_PER_PAGE
@@ -65,7 +63,6 @@ export default function HomeScreen(): JSX.Element {
     const podcastsToShow = filteredPodcasts.slice(startIndex, endIndex)
     setPaginatedPodcasts(podcastsToShow)
 
-    // Check if we have more pages
     setHasMorePages(filteredPodcasts.length > endIndex)
   }, [filteredPodcasts, currentPage])
 
@@ -86,10 +83,8 @@ export default function HomeScreen(): JSX.Element {
     }
   }, [refreshPodcasts])
 
-  // Load next page of podcasts
   const handleLoadMore = useCallback(() => {
     if (!isLoading && hasMorePages) {
-      // If we need more podcasts from the API
       if (filteredPodcasts.length <= currentPage * PODCASTS_PER_PAGE) {
         loadMore()
       }
@@ -150,24 +145,7 @@ export default function HomeScreen(): JSX.Element {
                 color={isFavorite(podcast.id) ? '#ef4444' : '#9ca3af'}
               />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.downloadButton}
-              onPress={(e) => {
-                e.stopPropagation()
-                downloadPodcast(podcast)
-              }}
-              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-            >
-              <Ionicons
-                name={
-                  isDownloaded(podcast.id)
-                    ? 'checkmark-circle'
-                    : 'download-outline'
-                }
-                size={18}
-                color={isDownloaded(podcast.id) ? '#10b981' : '#9ca3af'}
-              />
-            </TouchableOpacity>
+            <DownloadButton podcast={podcast} style={styles.downloadButton} />
           </View>
         </TouchableOpacity>
       )
@@ -197,7 +175,7 @@ export default function HomeScreen(): JSX.Element {
   }, [hasMorePages, handleLoadMore, isLoading])
 
   const renderListFooter = useCallback(() => {
-    if (isLoading && !refreshing && paginatedPodcasts.length === 0) {
+    if (isLoading && !refreshing && paginatedPodcasts.length > 0) {
       return (
         <View style={styles.loaderFooter}>
           <ActivityIndicator size="small" color="#9ca3af" />
@@ -227,7 +205,7 @@ export default function HomeScreen(): JSX.Element {
   ])
 
   const renderEmptyList = useCallback(() => {
-    if (isLoading && podcasts.length === 0) {
+    if (isLoading && podcasts.length === 0 && !refreshing) {
       return (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#9ca3af" />
@@ -257,7 +235,7 @@ export default function HomeScreen(): JSX.Element {
     }
 
     return null
-  }, [isLoading, podcasts.length, searchTerm])
+  }, [isLoading, podcasts.length, searchTerm, refreshing])
 
   const renderErrorState = useCallback(
     () => (
@@ -285,7 +263,7 @@ export default function HomeScreen(): JSX.Element {
           </View>
           <View>
             <Text style={styles.helloText}>Hello</Text>
-            <Text style={styles.userName}>Joe Doe</Text>
+            <Text style={styles.userName}>Andre Chandra</Text>
           </View>
         </View>
         <Ionicons name="notifications-outline" size={20} color="#9ca3af" />

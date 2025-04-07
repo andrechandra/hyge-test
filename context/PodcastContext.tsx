@@ -372,7 +372,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         setHasMorePages(!!hasNext)
       }
     } catch (error) {
-      console.error('Error fetching podcasts:', error)
+      // console.error('Error fetching podcasts:', error)
       if (isMounted.current) {
         setHasError(true)
       }
@@ -579,76 +579,105 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       setShowMiniPlayer(true)
       setIsBuffering(true)
 
-      const downloadedPodcast = downloads.find((dl) => dl.id === podcast.id)
-      let source
+      // Find the podcast in downloads
+      const downloadedPodcast = downloads.find(
+        (dl) => dl.id === podcast.id && dl.progress === 100
+      )
+      let audioSource
 
-      // First, check if we have a downloaded local version
+      // Step 1: Try to use local file if downloaded
       if (downloadedPodcast?.localAudioPath) {
-        console.log(
-          'Playing from downloaded path:',
-          downloadedPodcast.localAudioPath
-        )
-        source = { uri: downloadedPodcast.localAudioPath }
-      }
-      // Then handle remote URLs, but check connectivity first
-      else if (podcast.audioUrl && podcast.audioUrl.startsWith('http')) {
-        if (!isConnected) {
-          setIsBuffering(false)
-          alert(
-            "No internet connection. Please try again when you're online or play a downloaded podcast."
+        try {
+          // Verify the file exists
+          const fileInfo = await FileSystem.getInfoAsync(
+            downloadedPodcast.localAudioPath
           )
-          return
-        }
 
-        console.log('Playing from remote URL:', podcast.audioUrl)
-        source = { uri: podcast.audioUrl }
+          if (fileInfo.exists && fileInfo.size > 0) {
+            console.log(
+              'Playing from local file:',
+              downloadedPodcast.localAudioPath
+            )
+            audioSource = { uri: downloadedPodcast.localAudioPath }
+          } else {
+            console.log(
+              'Downloaded file not found or empty:',
+              downloadedPodcast.localAudioPath
+            )
+
+            // Remove invalid download from state
+            const updatedDownloads = downloads.filter(
+              (dl) => dl.id !== podcast.id
+            )
+            setDownloads(updatedDownloads)
+            await AsyncStorage.setItem(
+              STORAGE_KEYS.DOWNLOADS,
+              JSON.stringify(updatedDownloads)
+            )
+
+            // Fall back to online playback if connected
+            if (podcast.audioUrl && isConnected) {
+              audioSource = { uri: podcast.audioUrl }
+            }
+          }
+        } catch (fileError) {
+          // ...
+        }
       }
-      // Fallback if no audio source
-      else {
-        console.error('No valid audio source available for this podcast')
+      // Step 2: If not downloaded, use remote URL if connected
+      else if (podcast.audioUrl && isConnected) {
+        console.log('Playing from remote URL:', podcast.audioUrl)
+        audioSource = { uri: podcast.audioUrl }
+      }
+
+      // Check if we have a valid audio source
+      if (!audioSource) {
         setIsBuffering(false)
-        alert('Unable to play podcast: No valid audio source found')
+        setShowMiniPlayer(false)
+
+        if (!isConnected) {
+          alert(
+            'No internet connection available. Please download this podcast to play offline.'
+          )
+        } else {
+          alert('Unable to play podcast: No valid audio source found')
+        }
         return
       }
 
-      try {
-        const { sound } = await Audio.Sound.createAsync(
-          source,
-          {
-            positionMillis: 0,
-            shouldPlay: true,
-            rate: playbackRate,
-            progressUpdateIntervalMillis: 1000,
-            volume: 1.0
-          },
-          onPlaybackStatusUpdate
-        )
+      // Create and load the sound
+      const { sound } = await Audio.Sound.createAsync(
+        audioSource,
+        {
+          shouldPlay: true,
+          rate: playbackRate,
+          progressUpdateIntervalMillis: 1000,
+          volume: 1.0
+        },
+        onPlaybackStatusUpdate
+      )
 
-        setSoundObject(sound)
-        setIsPlaying(true) // Set playing state when sound is loaded
-        startPlaybackUpdates()
-      } catch (audioError) {
-        console.error('Audio loading error:', audioError)
-        setIsBuffering(false)
-        setShowMiniPlayer(false)
-        setIsPlaying(false) // Ensure playing state is reset on error
+      setSoundObject(sound)
+      setIsPlaying(true)
+      startPlaybackUpdates()
 
-        // Show a more user-friendly error
-        if (Platform.OS === 'web') {
-          alert(
-            'This audio format may not be supported by your browser. Please try another podcast.'
-          )
-        } else {
-          alert(
-            'Unable to play this podcast. The audio format may not be supported.'
-          )
-        }
-      }
+      // Save current podcast to storage
+      await AsyncStorage.setItem(
+        STORAGE_KEYS.CURRENT_PODCAST,
+        JSON.stringify(podcast)
+      )
     } catch (error) {
-      console.error('Error playing podcast:', error)
+      // console.error('Error playing podcast:', error)
       setIsBuffering(false)
       setShowMiniPlayer(false)
-      setIsPlaying(false) // Ensure playing state is reset on error
+      setIsPlaying(false)
+
+      // Show a more informative error message
+      // if (error instanceof Error) {
+      //   alert(`Unable to play podcast: ${error.message}`)
+      // } else {
+      //   alert('Unable to play podcast: An unknown error occurred')
+      // }
     }
   }
 
@@ -748,106 +777,201 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
 
   // Download podcast
   const downloadPodcast = async (podcast: Podcast): Promise<void> => {
-    const isAlreadyDownloaded = downloads.some((dl) => dl.id === podcast.id)
+    if (!isConnected) {
+      alert('No internet connection. Please connect to download podcasts.')
+      return
+    }
 
-    if (isAlreadyDownloaded || !podcast.audioUrl) {
+    if (!podcast.audioUrl) {
+      console.error('No audio URL available for download')
       return
     }
 
     try {
-      // Handle remote audio URLs
-      if (podcast.audioUrl && podcast.audioUrl.startsWith('http')) {
-        const fileName = `podcast-${podcast.id}.mp3`
-        const filePath = `${FileSystem.documentDirectory}${fileName}`
+      // Check if already downloaded
+      const existingDownload = downloads.find((dl) => dl.id === podcast.id)
+      if (existingDownload?.progress === 100) {
+        console.log('Podcast already downloaded:', podcast.id)
+        return
+      }
 
-        // Create download with progress indicator
-        const downloadWithProgress: DownloadedPodcast = {
-          ...podcast,
-          progress: 0,
-          downloadDate: new Date().toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-          }),
-          localAudioPath: filePath
-        }
+      // Create unique filename
+      const fileName = `podcast-${podcast.id}.mp3`
+      const filePath = `${FileSystem.documentDirectory}${fileName}`
 
-        const updatedDownloads = [...downloads, downloadWithProgress]
-        setDownloads(updatedDownloads)
+      // Create initial download entry or update existing
+      const downloadEntry: DownloadedPodcast = {
+        ...podcast,
+        progress: existingDownload?.progress || 0,
+        downloadDate: new Date().toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        }),
+        localAudioPath: filePath
+      }
 
-        // Start download
-        const downloadResumable = FileSystem.createDownloadResumable(
-          podcast.audioUrl,
-          filePath,
-          {},
-          (downloadProgress) => {
-            const progress =
-              (downloadProgress.totalBytesWritten /
-                downloadProgress.totalBytesExpectedToWrite) *
-              100
-
-            // Update progress
-            setDownloads((currentDownloads) =>
-              currentDownloads.map((dl) =>
-                dl.id === podcast.id
-                  ? { ...dl, progress: Math.round(progress) }
-                  : dl
-              )
+      // Use functional update to guarantee we have latest state
+      setDownloads((currentDownloads) => {
+        const updatedDownloads = existingDownload
+          ? currentDownloads.map((dl) =>
+              dl.id === podcast.id ? downloadEntry : dl
             )
-          }
-        )
+          : [...currentDownloads, downloadEntry]
 
-        // Complete download
-        const result = await downloadResumable.downloadAsync()
+        // Save to storage immediately
+        AsyncStorage.setItem(
+          STORAGE_KEYS.DOWNLOADS,
+          JSON.stringify(updatedDownloads)
+        ).catch((err) => console.error('Error saving initial download:', err))
 
-        if (result && result.uri) {
-          // Update with completed status
-          const finalDownloads = downloads.map((dl) =>
-            dl.id === podcast.id
-              ? { ...dl, progress: 100, localAudioPath: result.uri }
-              : dl
+        return updatedDownloads
+      })
+
+      // Start download
+      const downloadResumable = FileSystem.createDownloadResumable(
+        podcast.audioUrl,
+        filePath,
+        {},
+        (downloadProgress) => {
+          if (!downloadProgress.totalBytesExpectedToWrite) return
+
+          const progress = Math.round(
+            (downloadProgress.totalBytesWritten /
+              downloadProgress.totalBytesExpectedToWrite) *
+              100
           )
 
-          setDownloads(finalDownloads)
-          AsyncStorage.setItem(
-            STORAGE_KEYS.DOWNLOADS,
-            JSON.stringify(finalDownloads)
-          ).catch((err) => console.error('Error saving downloads:', err))
-        }
-      }
-    } catch (error) {
-      console.error('Error downloading podcast:', error)
+          // Update progress with functional update
+          setDownloads((currentDownloads) => {
+            const updatedDownloads = currentDownloads.map((dl) =>
+              dl.id === podcast.id ? { ...dl, progress } : dl
+            )
 
-      // Remove failed download
-      setDownloads(downloads.filter((dl) => dl.id !== podcast.id))
+            // Don't save progress updates to AsyncStorage on every update
+            // to avoid overwhelming AsyncStorage
+            if (progress % 20 === 0 || progress === 100) {
+              AsyncStorage.setItem(
+                STORAGE_KEYS.DOWNLOADS,
+                JSON.stringify(updatedDownloads)
+              ).catch((err) => console.error('Error saving progress:', err))
+            }
+
+            return updatedDownloads
+          })
+        }
+      )
+
+      // Execute download
+      const result = await downloadResumable.downloadAsync()
+
+      if (!result || !result.uri) {
+        throw new Error('Download failed - no result URI')
+      }
+
+      // Mark download as complete
+      setDownloads((currentDownloads) => {
+        // Use only the latest state
+        const completedDownloads = currentDownloads.map((dl) =>
+          dl.id === podcast.id
+            ? {
+                ...dl,
+                progress: 100,
+                localAudioPath: result.uri,
+                downloadDate: new Date().toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric'
+                })
+              }
+            : dl
+        )
+
+        // Save final completed state to AsyncStorage
+        AsyncStorage.setItem(
+          STORAGE_KEYS.DOWNLOADS,
+          JSON.stringify(completedDownloads)
+        ).catch((err) => console.error('Error saving completed download:', err))
+
+        console.log('Download completed successfully:', podcast.id)
+        return completedDownloads
+      })
+    } catch (error) {
+      console.error('Download error:', error)
+
+      // Clean up failed download file
+      try {
+        const filePath = `${FileSystem.documentDirectory}podcast-${podcast.id}.mp3`
+        const fileInfo = await FileSystem.getInfoAsync(filePath)
+        if (fileInfo.exists) {
+          await FileSystem.deleteAsync(filePath, { idempotent: true })
+        }
+      } catch (cleanupErr) {
+        console.error('Error cleaning up file:', cleanupErr)
+      }
+
+      // Remove failed download from state
+      setDownloads((currentDownloads) => {
+        const updatedDownloads = currentDownloads.filter(
+          (dl) => dl.id !== podcast.id
+        )
+
+        // Save updated state without the failed download
+        AsyncStorage.setItem(
+          STORAGE_KEYS.DOWNLOADS,
+          JSON.stringify(updatedDownloads)
+        ).catch((err) =>
+          console.error('Error saving downloads after failure:', err)
+        )
+
+        return updatedDownloads
+      })
     }
   }
 
   // Check if podcast is downloaded
   const isDownloaded = (podcastId: string): boolean => {
-    return downloads.some((dl) => dl.id === podcastId && dl.progress === 100)
+    // Check if the podcast exists in downloads array with 100% progress
+    const download = downloads.find((dl) => dl.id === podcastId)
+
+    if (!download) {
+      return false
+    }
+
+    // Consider it downloaded only if progress is 100 AND it has a valid localAudioPath
+    return download.progress === 100 && !!download.localAudioPath
   }
 
   // Remove download
   const removeDownload = (podcastId: string): void => {
-    const podcastToRemove = downloads.find((dl) => dl.id === podcastId)
+    console.log('Removing download:', podcastId)
 
-    if (podcastToRemove?.localAudioPath) {
+    // First find the download to get the file path
+    const downloadToRemove = downloads.find((dl) => dl.id === podcastId)
+
+    if (downloadToRemove?.localAudioPath) {
       // Delete the file
-      FileSystem.deleteAsync(podcastToRemove.localAudioPath, {
+      FileSystem.deleteAsync(downloadToRemove.localAudioPath, {
         idempotent: true
       }).catch((error) => console.error('Error deleting file:', error))
     }
 
-    const updatedDownloads = downloads.filter((dl) => dl.id !== podcastId)
-    setDownloads(updatedDownloads)
+    // Update state with functional update
+    setDownloads((currentDownloads) => {
+      const updatedDownloads = currentDownloads.filter(
+        (dl) => dl.id !== podcastId
+      )
 
-    AsyncStorage.setItem(
-      STORAGE_KEYS.DOWNLOADS,
-      JSON.stringify(updatedDownloads)
-    ).catch((err) =>
-      console.error('Error saving downloads after removal:', err)
-    )
+      // Update AsyncStorage
+      AsyncStorage.setItem(
+        STORAGE_KEYS.DOWNLOADS,
+        JSON.stringify(updatedDownloads)
+      ).catch((err) =>
+        console.error('Error saving downloads after removal:', err)
+      )
+
+      return updatedDownloads
+    })
   }
 
   // Add isConnected to the provider value
