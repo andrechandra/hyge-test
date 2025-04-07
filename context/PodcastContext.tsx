@@ -221,8 +221,27 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       }
     }
 
+    // Handle app state changes
+    const subscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange
+    )
+
     init()
 
+    return () => {
+      // Cleanup
+      if (playbackUpdateInterval.current) {
+        clearInterval(playbackUpdateInterval.current)
+      }
+
+      unloadSound()
+      subscription.remove()
+    }
+  }, []) // Empty dependency array - runs only once on mount
+
+  // Second useEffect - only for handling network connectivity changes
+  useEffect(() => {
     // Set up network connectivity listener
     const unsubscribeNetInfo = NetInfo.addEventListener(
       (state: NetInfoState) => {
@@ -239,22 +258,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
       }
     )
 
-    // Handle app state changes
-    const subscription = AppState.addEventListener(
-      'change',
-      handleAppStateChange
-    )
-
     return () => {
-      isMounted.current = false
-
-      // Cleanup
-      if (playbackUpdateInterval.current) {
-        clearInterval(playbackUpdateInterval.current)
-      }
-
-      unloadSound()
-      subscription.remove()
       unsubscribeNetInfo() // Clean up NetInfo listener
     }
   }, [isConnected])
