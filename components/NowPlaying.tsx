@@ -39,7 +39,8 @@ const NowPlaying: React.FC = () => {
     changePlaybackRate,
     playbackRate,
     soundObject,
-    isConnected
+    isConnected,
+    sharePodcast
   } = usePodcast()
 
   const [sliderValue, setSliderValue] = useState<number>(0)
@@ -367,6 +368,7 @@ const NowPlaying: React.FC = () => {
 
               <TouchableOpacity
                 style={styles.additionalButton}
+                onPress={() => currentPodcast && sharePodcast(currentPodcast)}
                 hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
               >
                 <Ionicons

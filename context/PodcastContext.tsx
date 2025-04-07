@@ -11,7 +11,7 @@ import {
   ImageSourcePropType,
   AppState,
   AppStateStatus,
-  Platform
+  Share
 } from 'react-native'
 import { Audio } from 'expo-av'
 import * as FileSystem from 'expo-file-system'
@@ -90,6 +90,7 @@ interface PodcastContextType {
   downloadPodcast: (podcast: Podcast) => Promise<void>
   isDownloaded: (podcastId: string) => boolean
   removeDownload: (podcastId: string) => void
+  sharePodcast: (podcast: Podcast) => Promise<void>
   setShowMiniPlayer: React.Dispatch<React.SetStateAction<boolean>>
   setShowFullPlayer: React.Dispatch<React.SetStateAction<boolean>>
   // Audio control methods
@@ -971,6 +972,59 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
     return favorites.some((fav) => fav.id === podcastId)
   }
 
+  // Share podcast
+  const sharePodcast = async (podcast: Podcast): Promise<void> => {
+    if (!podcast) return
+
+    try {
+      // Create a formatted message with podcast details
+      const shareMessage = `🎧 Check out "${podcast.title}" by ${
+        podcast.creator
+      }
+      
+${
+  podcast.description
+    ? podcast.description.substring(0, 100) + '...'
+    : 'No description available.'
+}
+
+Episode duration: ${podcast.duration}
+Released: ${podcast.releaseDate}`
+
+      // Determine URL to share
+      let url = podcast.audioUrl || ''
+
+      // Prepare the share content
+      const shareOptions = {
+        title: `Share: ${podcast.title}`,
+        message: shareMessage,
+        url: url
+      }
+
+      const result = await Share.share(shareOptions, {
+        dialogTitle: `Share: ${podcast.title}`
+      })
+
+      if (result.action === Share.sharedAction) {
+        // Add notification for successful share
+        addNotification({
+          message: `Shared: "${podcast.title}"`,
+          type: 'success',
+          relatedPodcastId: podcast.id
+        })
+      }
+    } catch (error) {
+      console.error('Error sharing podcast:', error)
+
+      // Add notification for failed share
+      addNotification({
+        message: `Failed to share: "${podcast.title}"`,
+        type: 'error',
+        relatedPodcastId: podcast.id
+      })
+    }
+  }
+
   // Download podcast
   const downloadPodcast = async (podcast: Podcast): Promise<void> => {
     if (!isConnected) {
@@ -1259,6 +1313,7 @@ export const PodcastProvider: React.FC<PodcastProviderProps> = ({
         downloadPodcast,
         isDownloaded,
         removeDownload,
+        sharePodcast,
         setShowMiniPlayer,
         setShowFullPlayer,
         // Audio control methods
