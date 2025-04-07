@@ -21,7 +21,6 @@ export default function TabLayout(): JSX.Element {
 
   const tabs: TabItem[] = [
     { name: '', label: 'Home', iconName: 'home-outline' },
-    { name: 'explore', label: 'Explore', iconName: 'grid-outline' },
     { name: 'favorites', label: 'Favorites', iconName: 'heart-outline' },
     { name: 'downloads', label: 'Downloads', iconName: 'download-outline' }
   ]
