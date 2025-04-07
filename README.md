@@ -1,50 +1,91 @@
-# Welcome to your Expo app 👋
+# React Native Radio Podcast App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A feature-rich mobile podcast application built with React Native and Expo, designed to play and manage podcasts from React Native Radio.
 
-## Get started
+## Features
 
-1. Install dependencies
+- 🎧 **Podcast Streaming**: Stream episodes directly from React Native Radio
+- 📥 **Offline Mode**: Download episodes for offline listening
+- ❤️ **Favorites**: Save your favorite episodes for easy access
+- 🔄 **Playback Controls**: Play/pause, skip forward/backward, adjust playback speed
+- 🔁 **Loop & Shuffle**: Loop episodes or shuffle your playlist
+- 💌 **Share Episodes**: Share podcast episodes with friends via system share options
+- 🔔 **Notifications**: Get updates about downloads and playback status
+
+## Tech Stack
+
+- React Native
+- Expo
+- React Context API for state management
+- Expo AV for audio playback
+- Expo FileSystem for local storage
+- AsyncStorage for persistence
+- React Native Community components
+- Expo Blur for UI effects
+
+## Setup Instructions
+
+### Prerequisites
+
+- Node.js (>=14.0.0)
+- npm or yarn
+- Expo CLI
+- iOS Simulator or Android Emulator (optional for local development)
+
+### Installation
+
+1. Clone the repository
+
+   ```bash
+   git clone https://github.com/andrechandra/hyge-test.git
+   cd hyge-test
+   ```
+
+2. Install dependencies
 
    ```bash
    npm install
+   # or
+   yarn install
    ```
 
-2. Start the app
+3. Start the Expo development server
 
    ```bash
-    npx expo start
+   npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+4. Run on your preferred platform:
+   - Press `a` for Android
+   - Press `i` for iOS
+   - Press `w` for web
+   - Scan the QR code with Expo Go on your physical device
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## Usage
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- Browse episodes on the home screen
+- Tap an episode to start playback
+- Use the mini player at the bottom to control currently playing episode
+- Expand the player for more options (speed control, sharing, etc.)
+- Download episodes for offline listening by tapping the download icon
+- Mark episodes as favorites by tapping the heart icon
+- Share episodes with friends using the share button
 
-## Get a fresh project
+## Development
 
-When you're ready, run:
+The project structure follows a feature-based organization:
 
-```bash
-npm run reset-project
-```
+- `/context` - Contains Context API providers
+- `/components` - Reusable UI components
+- `/utils` - Helper functions and utilities
+- `/assets` - Images, icons, and other static resources
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## License
 
-## Learn more
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-To learn more about developing your project with Expo, look at the following resources:
+## Acknowledgements
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- [React Native Radio](https://reactnativeradio.com/) for the podcast content
+- [Expo](https://expo.dev/) for the development framework
+- [React Native Community](https://reactnative.dev/community/overview) for their valuable components
